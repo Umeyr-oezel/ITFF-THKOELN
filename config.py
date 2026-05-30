@@ -1,24 +1,14 @@
 """
 Central config for the whole pipeline.
-All credentials come from .env so nothing sensitive is hardcoded here.
-"""
-import os
-from dotenv import load_dotenv
 
-load_dotenv()
+Database credentials live in .env and are read by Django in
+secpipeline/settings.py. Everything here is non-sensitive pipeline
+configuration: the SEC URL, file paths, and batch/timing settings.
+"""
 
 # where we scrape available quarters from
 SEC_BASE_URL = "https://www.sec.gov/data-research/sec-markets-data/insider-transactions-data-sets"
 USER_AGENT = "University Group01 group01@student.university.edu"
-
-# DB credentials from .env
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "localhost"),
-    "port": int(os.getenv("DB_PORT", 3306)),
-    "user": os.getenv("DB_USER", ""),
-    "password": os.getenv("DB_PASSWORD", ""),
-}
-SCHEMA_NAME = "group01"
 
 # directory layout
 DATA_DIR = "data/"

@@ -1,16 +1,20 @@
-"""
-Runs plausibility checks on imported transaction data.
-4 mandatory checks + 4 bonus checks. Results go into two places:
-the is_valid/validation_flags columns on the main table AND
-the separate validation_log table for traceability.
+"""Runs plausibility checks on imported transaction data.
+
+4 mandatory checks + 4 bonus checks. Results go into two places: the
+is_valid/validation_flags columns on the main table AND the separate
+validation_log table for traceability.
+
+The checks themselves still run vectorised over a pandas DataFrame -
+that part didn't change. What changed is the edges: data is pulled in
+through the ORM instead of raw SQL, and results are written back with
+bulk_update/bulk_create.
 """
 import logging
 from datetime import date
 
 import pandas as pd
-from sqlalchemy import text
 
-from modules import get_engine
+from pipeline.models import DerivTrans, NonderivTrans, ValidationLog
 import config
 
 logger = logging.getLogger(__name__)
@@ -91,7 +95,11 @@ def _check_reasonable_price(df):
 
 
 def _check_orphan_records(df):
-    """Transaction without a matching submission - shouldn't happen but does."""
+    """Transaction without a matching submission - shouldn't happen but does.
+
+    With the real foreign key in place this can no longer occur (the
+    import drops orphans before insert), so it stays as a safety net.
+    """
     mask = df["_has_submission"] == 0
     df.loc[mask, "is_valid"] = 0
     df.loc[mask, "flags"] += "ORPHAN_RECORD;"
@@ -100,44 +108,36 @@ def _check_orphan_records(df):
 
 # --- Writing results back ---
 
-def _update_main_table(engine, table_name, df):
+def _update_main_table(model, df):
     """Set is_valid and validation_flags on the transaction table.
 
-    Resets valid rows per quarter (to avoid locking the whole table),
-    then marks invalid rows individually.
+    Resets every row in the affected quarters to valid in one UPDATE,
+    then flags the invalid rows by id with a single bulk_update.
     """
     invalid = df[df["is_valid"] == 0]
-    quarters = df["source_quarter"].unique()
+    quarters = list(df["source_quarter"].unique())
 
-    with engine.begin() as conn:
-        # reset per quarter so we don't lock 285k rows at once
-        for q in quarters:
-            conn.execute(
-                text(f"UPDATE {table_name} SET is_valid = 1, "
-                     f"validation_flags = '' "
-                     f"WHERE source_quarter = :q"),
-                {"q": q},
-            )
+    model.objects.filter(source_quarter__in=quarters).update(
+        is_valid=True, validation_flags=""
+    )
 
-        if not invalid.empty:
-            ids = invalid["id"].astype(int).tolist()
-            flag_vals = invalid["flags"].tolist()
-            params = [
-                {"id": rid, "v": 0, "f": f}
-                for rid, f in zip(ids, flag_vals)
-            ]
-            conn.execute(
-                text(f"UPDATE {table_name} SET is_valid = :v, "
-                     f"validation_flags = :f WHERE id = :id"),
-                params,
-            )
+    if not invalid.empty:
+        objs = [
+            model(id=int(rid), is_valid=False, validation_flags=flags)
+            for rid, flags in zip(invalid["id"], invalid["flags"])
+        ]
+        model.objects.bulk_update(
+            objs, ["is_valid", "validation_flags"],
+            batch_size=config.BATCH_SIZE,
+        )
 
     logger.info(
-        f"  Updated {table_name}: {len(df)} total, {len(invalid)} marked invalid"
+        f"  Updated {model._meta.db_table}: {len(df)} total, "
+        f"{len(invalid)} marked invalid"
     )
 
 
-def _write_validation_log(engine, table_name, df):
+def _write_validation_log(table_name, df):
     """Write one log row per failed check per record."""
     failed = df[df["is_valid"] == 0]
 
@@ -149,24 +149,17 @@ def _write_validation_log(engine, table_name, df):
     for _, row in failed.iterrows():
         checks = [c for c in row["flags"].split(";") if c]
         for check in checks:
-            log_rows.append({
-                "accession_number": row["accession_number"],
-                "table_name": table_name,
-                "record_id": int(row["id"]),
-                "check_name": check,
-                "is_passed": 0,
-                "details": _describe_failure(row, check),
-                "source_quarter": row["source_quarter"],
-            })
+            log_rows.append(ValidationLog(
+                accession_number=row["accession_number"],
+                table_name=table_name,
+                record_id=int(row["id"]),
+                check_name=check,
+                is_passed=False,
+                details=_describe_failure(row, check),
+                source_quarter=row["source_quarter"],
+            ))
 
-    log_df = pd.DataFrame(log_rows)
-    with engine.begin() as conn:
-        log_df.to_sql(
-            "validation_log", conn,
-            if_exists="append", index=False,
-            chunksize=config.BATCH_SIZE,
-        )
-
+    ValidationLog.objects.bulk_create(log_rows, batch_size=config.BATCH_SIZE)
     logger.info(f"  Wrote {len(log_rows)} entries to validation_log for {table_name}")
 
 
@@ -206,31 +199,40 @@ def _describe_failure(row, check_name):
 
 # --- Main validation logic ---
 
-def _validate_table(engine, table_name):
+def _validate_table(model, table_name):
     """Run all 8 checks on one transaction table, store results.
 
-    LEFT JOIN against submissions so we also catch orphan records.
+    Pulls each row together with its filing_date from the related
+    submission (the ORM join replaces the old LEFT JOIN). Numeric and
+    date columns are coerced so the checks behave exactly like they did
+    when the data came straight out of read_sql.
     """
     logger.info(f"Validating {table_name}...")
 
-    query = text(f"""
-        SELECT t.id, t.accession_number, t.trans_date, t.trans_code,
-               t.shares, t.price_per_share, t.source_quarter,
-               s.filing_date,
-               CASE WHEN s.accession_number IS NOT NULL THEN 1 ELSE 0
-               END AS _has_submission
-        FROM {table_name} t
-        LEFT JOIN submissions s ON t.accession_number = s.accession_number
-    """)
-    df = pd.read_sql(query, engine)
+    rows = model.objects.values(
+        "id", "submission_id", "trans_date", "trans_code",
+        "shares", "price_per_share", "source_quarter",
+        "submission__filing_date",
+    )
+    df = pd.DataFrame(list(rows))
 
     if df.empty:
         logger.info(f"  {table_name}: no data to validate")
         return
 
-    # make sure comparison works properly
+    df = df.rename(columns={
+        "submission_id": "accession_number",
+        "submission__filing_date": "filing_date",
+    })
+
+    # the foreign key guarantees a submission exists for every row
+    df["_has_submission"] = 1
+
+    # make sure comparisons work on real numbers/dates, not Decimal/None
     df["trans_date"] = pd.to_datetime(df["trans_date"], errors="coerce")
     df["filing_date"] = pd.to_datetime(df["filing_date"], errors="coerce")
+    df["shares"] = pd.to_numeric(df["shares"], errors="coerce")
+    df["price_per_share"] = pd.to_numeric(df["price_per_share"], errors="coerce")
 
     df["is_valid"] = 1
     df["flags"] = ""
@@ -255,34 +257,27 @@ def _validate_table(engine, table_name):
     )
 
     # dual storage: inline flags + separate log table
-    _update_main_table(engine, table_name, df)
-    _write_validation_log(engine, table_name, df)
+    _update_main_table(model, df)
+    _write_validation_log(table_name, df)
 
 
 def run_validation():
     """Validate nonderiv_trans and deriv_trans, then print a summary."""
-    engine = get_engine()
-
     # clean old validation_log so re-runs don't cause duplicates
-    with engine.begin() as conn:
-        conn.execute(text("DELETE FROM validation_log"))
+    ValidationLog.objects.all().delete()
     logger.info("Cleared validation_log for fresh run")
 
-    _validate_table(engine, "nonderiv_trans")
-    _validate_table(engine, "deriv_trans")
+    _validate_table(NonderivTrans, "nonderiv_trans")
+    _validate_table(DerivTrans, "deriv_trans")
 
-    with engine.connect() as conn:
-        for tbl in ["nonderiv_trans", "deriv_trans"]:
-            total = conn.execute(text(f"SELECT COUNT(*) FROM {tbl}")).scalar()
-            valid = conn.execute(
-                text(f"SELECT COUNT(*) FROM {tbl} WHERE is_valid = 1")
-            ).scalar()
-            pct = (valid / total * 100) if total else 0
-            logger.info(f"  {tbl}: {valid}/{total} valid ({pct:.1f}%)")
+    for model, name in [(NonderivTrans, "nonderiv_trans"),
+                        (DerivTrans, "deriv_trans")]:
+        total = model.objects.count()
+        valid = model.objects.filter(is_valid=True).count()
+        pct = (valid / total * 100) if total else 0
+        logger.info(f"  {name}: {valid}/{total} valid ({pct:.1f}%)")
 
-        vlog = conn.execute(
-            text("SELECT COUNT(*) FROM validation_log")
-        ).scalar()
-        logger.info(f"  validation_log: {vlog} entries")
+    vlog = ValidationLog.objects.count()
+    logger.info(f"  validation_log: {vlog} entries")
 
     logger.info("Validation complete")

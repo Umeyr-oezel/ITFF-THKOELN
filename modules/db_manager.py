@@ -1,317 +1,189 @@
-"""
-Handles all MySQL interactions: schema setup, table creation,
-and idempotent data import (delete-then-insert strategy).
+"""Idempotent data import on top of the Django ORM.
 
-The university's shared DB server doesn't grant REFERENCES privilege,
-so FK integrity is enforced in code: delete children first, insert
-parent first. Not ideal but it works.
+Each quarter is imported with a delete-then-insert strategy so the
+pipeline can be re-run safely. submissions go in first; the four child
+tables reference them via a real foreign key, so any transaction or
+holding whose filing is missing gets dropped (and logged) before the
+insert instead of blowing up the whole batch.
+
+The whole import of a quarter runs in one transaction now - PostgreSQL
+on our own database doesn't have the lock-contention problem the old
+shared MySQL server did, so there's no reason to split it up anymore.
+
+pipeline_log is an audit trail and is never deleted.
 """
 import logging
 import time
 
-from urllib.parse import quote_plus
-from sqlalchemy import create_engine, text
+import pandas as pd
+from django.db import transaction
 
+from pipeline.models import (
+    DerivHolding,
+    DerivTrans,
+    NonderivHolding,
+    NonderivTrans,
+    PipelineLog,
+    Submission,
+    ValidationLog,
+)
 import config
 
 logger = logging.getLogger(__name__)
 
-_engine = None
+
+def _records(df):
+    """Turn a prepared DataFrame into row dicts, NaN/NaT replaced by None.
+
+    pandas marks missing values with NaN (floats) and NaT (dates); the
+    ORM needs real None so those columns end up as SQL NULL. Casting to
+    object first lets a single where() catch both kinds at once.
+    """
+    if df.empty:
+        return []
+    clean = df.astype(object).where(pd.notnull(df), None)
+    return clean.to_dict("records")
 
 
-def get_engine():
-    """Return a cached SQLAlchemy engine (creates one on first call)."""
-    global _engine
-    if _engine is None:
-        db = config.DB_CONFIG
-        url = (
-            f"mysql+pymysql://{quote_plus(db['user'])}:{quote_plus(db['password'])}"
-            f"@{db['host']}:{db['port']}/{config.SCHEMA_NAME}"
+def _drop_orphans(df, valid_accessions, table_name):
+    """Drop child rows whose filing isn't in this quarter's submissions.
+
+    The foreign key would reject them anyway; filtering up front keeps
+    one bad row from failing the entire bulk insert. Dropped rows are
+    logged so they don't vanish silently.
+    """
+    if df.empty:
+        return df
+    keep = df["accession_number"].isin(valid_accessions)
+    dropped = int((~keep).sum())
+    if dropped:
+        logger.warning(
+            f"  {table_name}: dropping {dropped} orphan row(s) "
+            f"without a matching submission"
         )
-        _engine = create_engine(
-            url, pool_pre_ping=True, pool_recycle=280,
-            pool_size=3, max_overflow=2,
+    return df[keep]
+
+
+# --- building model instances from prepared DataFrames ---
+
+def _build_submissions(records):
+    """Map submission dicts onto Submission instances for bulk_create."""
+    return [
+        Submission(
+            accession_number=r["accession_number"],
+            filing_date=r.get("filing_date"),
+            issuer_cik=r.get("issuer_cik"),
+            issuer_name=r.get("issuer_name"),
+            issuer_ticker=r.get("issuer_ticker"),
+            rptowner_cik=r.get("rptowner_cik"),
+            rptowner_name=r.get("rptowner_name"),
+            is_director=r.get("is_director"),
+            is_officer=r.get("is_officer"),
+            is_ten_percent=r.get("is_ten_percent"),
+            is_other=r.get("is_other"),
+            officer_title=r.get("officer_title"),
+            created_by=r["created_by"],
+            source_quarter=r["source_quarter"],
         )
-    return _engine
-
-
-# --- Table definitions ---
-
-CREATE_TABLES = [
-    # submissions is the parent table - everything references it
-    """
-    CREATE TABLE IF NOT EXISTS submissions (
-        accession_number VARCHAR(30) PRIMARY KEY,
-        filing_date DATE,
-        issuer_cik BIGINT,
-        issuer_name VARCHAR(255),
-        issuer_ticker VARCHAR(20),
-        rptowner_cik BIGINT,
-        rptowner_name VARCHAR(255),
-        is_director TINYINT(1),
-        is_officer TINYINT(1),
-        is_ten_percent TINYINT(1),
-        is_other TINYINT(1),
-        officer_title VARCHAR(255),
-        created_by VARCHAR(50) NOT NULL,
-        source_quarter VARCHAR(10) NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_issuer_cik (issuer_cik),
-        INDEX idx_source_quarter (source_quarter),
-        INDEX idx_filing_date (filing_date)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """,
-    # nonderiv transactions - FK to submissions handled in app code
-    """
-    CREATE TABLE IF NOT EXISTS nonderiv_trans (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        accession_number VARCHAR(30) NOT NULL,
-        trans_date DATE,
-        trans_code VARCHAR(5),
-        equity_swap VARCHAR(5),
-        shares DECIMAL(20,4),
-        price_per_share DECIMAL(20,4),
-        shares_owned_following DECIMAL(20,4),
-        nominal_volume DECIMAL(24,4),
-        is_valid TINYINT(1) DEFAULT NULL,
-        validation_flags VARCHAR(500) DEFAULT NULL,
-        created_by VARCHAR(50) NOT NULL,
-        source_quarter VARCHAR(10) NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_trans_code (trans_code),
-        INDEX idx_trans_date (trans_date),
-        INDEX idx_source_quarter (source_quarter),
-        INDEX idx_accession (accession_number)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """,
-    # nonderiv holdings
-    """
-    CREATE TABLE IF NOT EXISTS nonderiv_holdings (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        accession_number VARCHAR(30) NOT NULL,
-        shares_owned DECIMAL(20,4),
-        created_by VARCHAR(50) NOT NULL,
-        source_quarter VARCHAR(10) NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_source_quarter (source_quarter)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """,
-    # derivative transactions
-    """
-    CREATE TABLE IF NOT EXISTS deriv_trans (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        accession_number VARCHAR(30) NOT NULL,
-        trans_date DATE,
-        trans_code VARCHAR(5),
-        equity_swap VARCHAR(5),
-        shares DECIMAL(20,4),
-        price_per_share DECIMAL(20,4),
-        shares_owned_following DECIMAL(20,4),
-        nominal_volume DECIMAL(24,4),
-        is_valid TINYINT(1) DEFAULT NULL,
-        validation_flags VARCHAR(500) DEFAULT NULL,
-        created_by VARCHAR(50) NOT NULL,
-        source_quarter VARCHAR(10) NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_trans_date (trans_date),
-        INDEX idx_source_quarter (source_quarter)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """,
-    # derivative holdings
-    """
-    CREATE TABLE IF NOT EXISTS deriv_holdings (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        accession_number VARCHAR(30) NOT NULL,
-        shares_owned DECIMAL(20,4),
-        created_by VARCHAR(50) NOT NULL,
-        source_quarter VARCHAR(10) NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_source_quarter (source_quarter)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """,
-    # validation results - one row per failed check
-    """
-    CREATE TABLE IF NOT EXISTS validation_log (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        accession_number VARCHAR(30),
-        table_name VARCHAR(50) NOT NULL,
-        record_id INT,
-        check_name VARCHAR(100) NOT NULL,
-        is_passed TINYINT(1) NOT NULL,
-        details TEXT,
-        checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        source_quarter VARCHAR(10) NOT NULL,
-        INDEX idx_accession (accession_number),
-        INDEX idx_source_quarter (source_quarter)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """,
-    # pipeline audit trail - this table is NEVER deleted
-    """
-    CREATE TABLE IF NOT EXISTS pipeline_log (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        run_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        quarter_processed VARCHAR(10),
-        table_name VARCHAR(50),
-        records_imported INT DEFAULT 0,
-        records_invalid INT DEFAULT 0,
-        status VARCHAR(20) NOT NULL,
-        duration_seconds DECIMAL(10,2),
-        error_message TEXT
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """,
-]
-
-
-def setup_database():
-    """Create the schema and all 7 tables if they don't exist yet."""
-    db = config.DB_CONFIG
-    root_url = (
-        f"mysql+pymysql://{quote_plus(db['user'])}:{quote_plus(db['password'])}"
-        f"@{db['host']}:{db['port']}/"
-    )
-    root_engine = create_engine(root_url)
-    with root_engine.connect() as conn:
-        conn.execute(text(f"CREATE DATABASE IF NOT EXISTS {config.SCHEMA_NAME}"))
-        conn.commit()
-    root_engine.dispose()
-
-    engine = get_engine()
-    with engine.connect() as conn:
-        for ddl in CREATE_TABLES:
-            conn.execute(text(ddl))
-        conn.commit()
-
-    # try adding foreign keys - the university server often lacks
-    # the REFERENCES privilege, so we catch and move on
-    _try_add_foreign_keys(engine)
-
-    logger.info(f"Database '{config.SCHEMA_NAME}' ready with all 7 tables")
-
-
-def _try_add_foreign_keys(engine):
-    """Attempt to create FK constraints linking child tables to submissions.
-
-    The shared university MySQL server typically doesn't grant REFERENCES,
-    so this will fail silently. We keep insertion/deletion order in code
-    as the actual safety net regardless.
-    """
-    fk_statements = [
-        "ALTER TABLE nonderiv_trans ADD CONSTRAINT fk_nd_trans_sub "
-        "FOREIGN KEY (accession_number) REFERENCES submissions(accession_number) "
-        "ON DELETE CASCADE",
-        "ALTER TABLE nonderiv_holdings ADD CONSTRAINT fk_nd_hold_sub "
-        "FOREIGN KEY (accession_number) REFERENCES submissions(accession_number) "
-        "ON DELETE CASCADE",
-        "ALTER TABLE deriv_trans ADD CONSTRAINT fk_d_trans_sub "
-        "FOREIGN KEY (accession_number) REFERENCES submissions(accession_number) "
-        "ON DELETE CASCADE",
-        "ALTER TABLE deriv_holdings ADD CONSTRAINT fk_d_hold_sub "
-        "FOREIGN KEY (accession_number) REFERENCES submissions(accession_number) "
-        "ON DELETE CASCADE",
+        for r in records
     ]
-    with engine.connect() as conn:
-        for stmt in fk_statements:
-            try:
-                conn.execute(text(stmt))
-                conn.commit()
-            except Exception:
-                # expected on servers without REFERENCES privilege -
-                # order-based integrity in import/delete code handles it
-                conn.rollback()
-                break
-
-    logger.info("FK constraints: applied if server permits, skipped otherwise")
 
 
-# --- Idempotent import ---
+def _build_transactions(model, records):
+    """Map transaction dicts onto model instances (nonderiv or deriv).
 
-# insert order matters: parent first so children can reference it
-IMPORT_ORDER = [
-    "submissions",
-    "nonderiv_trans",
-    "nonderiv_holdings",
-    "deriv_trans",
-    "deriv_holdings",
-]
-
-
-def _delete_quarter(engine, quarter):
-    """Wipe all data for a quarter before re-importing.
-
-    Each table in its own transaction to avoid lock timeouts
-    on the shared university server. Children first, then parent.
-    Retries on lock timeout since other groups might be running too.
+    submission_id carries the accession_number straight into the FK
+    column. is_valid/validation_flags stay unset - the validation phase
+    fills them in later.
     """
-    for table in ["deriv_holdings", "deriv_trans", "nonderiv_holdings",
-                  "nonderiv_trans", "submissions", "validation_log"]:
-        _execute_with_retry(
-            engine,
-            text(f"DELETE FROM {table} WHERE source_quarter = :q"),
-            {"q": quarter},
+    return [
+        model(
+            submission_id=r["accession_number"],
+            trans_date=r.get("trans_date"),
+            trans_code=r.get("trans_code"),
+            equity_swap=r.get("equity_swap"),
+            shares=r.get("shares"),
+            price_per_share=r.get("price_per_share"),
+            shares_owned_following=r.get("shares_owned_following"),
+            nominal_volume=r.get("nominal_volume"),
+            created_by=r["created_by"],
+            source_quarter=r["source_quarter"],
         )
+        for r in records
+    ]
+
+
+def _build_holdings(model, records):
+    """Map holding dicts onto model instances (nonderiv or deriv)."""
+    return [
+        model(
+            submission_id=r["accession_number"],
+            shares_owned=r.get("shares_owned"),
+            created_by=r["created_by"],
+            source_quarter=r["source_quarter"],
+        )
+        for r in records
+    ]
+
+
+# --- idempotent import ---
+
+def _delete_quarter(quarter):
+    """Remove a quarter's data before re-import (children first).
+
+    Deleting submissions would cascade to the children, but we clear
+    them explicitly first so the intent is obvious and so validation_log
+    (which has no foreign key) gets wiped for the quarter too.
+    """
+    for model in (DerivHolding, DerivTrans, NonderivHolding,
+                  NonderivTrans, Submission):
+        model.objects.filter(source_quarter=quarter).delete()
+    ValidationLog.objects.filter(source_quarter=quarter).delete()
     logger.info(f"Deleted existing data for {quarter}")
 
 
-def _execute_with_retry(engine, stmt, params=None, max_retries=3):
-    """Run a SQL statement with retry on lock timeout.
-
-    The shared university server can timeout when multiple groups
-    are running pipelines simultaneously.
-    """
-    for attempt in range(max_retries):
-        try:
-            with engine.begin() as conn:
-                conn.execute(text("SET innodb_lock_wait_timeout = 120"))
-                conn.execute(stmt, params or {})
-            return
-        except Exception as e:
-            err_str = str(e)
-            if "Lock wait timeout" in err_str and attempt < max_retries - 1:
-                wait = 3 * (attempt + 1)
-                logger.warning(
-                    f"Lock timeout, retry {attempt + 1}/{max_retries} in {wait}s"
-                )
-                time.sleep(wait)
-            else:
-                raise
-
-
 def import_quarter(prepared_quarter, quarter):
-    """Import one quarter using delete-then-insert.
+    """Import one quarter using delete-then-insert, all in one transaction.
 
-    Each table gets its own transaction to avoid holding locks
-    too long on the shared server. Not a single atomic operation
-    anymore, but the pipeline can be re-run safely if it fails
-    mid-way (idempotent by design).
+    If anything fails the transaction rolls back and the quarter is left
+    exactly as it was, so a re-run always lands on a clean slate.
     """
-    engine = get_engine()
+    sub_df = prepared_quarter["submissions"]
     start = time.time()
 
+    children = [
+        ("nonderiv_trans", NonderivTrans, _build_transactions),
+        ("nonderiv_holdings", NonderivHolding, _build_holdings),
+        ("deriv_trans", DerivTrans, _build_transactions),
+        ("deriv_holdings", DerivHolding, _build_holdings),
+    ]
+
     try:
-        _delete_quarter(engine, quarter)
+        with transaction.atomic():
+            _delete_quarter(quarter)
 
-        for table_name in IMPORT_ORDER:
-            df = prepared_quarter[table_name]
-            if df.empty:
-                logger.info(f"  {quarter}/{table_name}: empty, skipping")
-                continue
+            Submission.objects.bulk_create(
+                _build_submissions(_records(sub_df)),
+                batch_size=config.BATCH_SIZE,
+            )
+            logger.info(f"  {quarter}/submissions: {len(sub_df)} rows imported")
 
-            # DB generates the id column itself
-            if "id" in df.columns:
-                df = df.drop(columns=["id"])
-
-            with engine.begin() as conn:
-                conn.execute(text("SET innodb_lock_wait_timeout = 120"))
-                df.to_sql(
-                    table_name, conn,
-                    if_exists="append", index=False,
-                    chunksize=config.BATCH_SIZE
+            valid_accessions = set(sub_df["accession_number"])
+            for table_name, model, builder in children:
+                df = _drop_orphans(
+                    prepared_quarter[table_name], valid_accessions, table_name
                 )
-            logger.info(f"  {quarter}/{table_name}: {len(df)} rows imported")
+                if df.empty:
+                    logger.info(f"  {quarter}/{table_name}: empty, skipping")
+                    continue
+                model.objects.bulk_create(
+                    builder(model, _records(df)),
+                    batch_size=config.BATCH_SIZE,
+                )
+                logger.info(f"  {quarter}/{table_name}: {len(df)} rows imported")
 
         elapsed = time.time() - start
-        log_pipeline_run(quarter, "all", len(prepared_quarter["submissions"]),
-                         0, "success", elapsed)
+        log_pipeline_run(quarter, "all", len(sub_df), 0, "success", elapsed)
         logger.info(f"Import {quarter} complete in {elapsed:.1f}s")
 
     except Exception as e:
@@ -332,16 +204,17 @@ def import_all_data(prepared_data):
 
 def log_pipeline_run(quarter, table_name, records_imported,
                      records_invalid, status, duration, error_msg=None):
-    """Append to pipeline_log. This table persists across re-runs."""
-    engine = get_engine()
-    with engine.begin() as conn:
-        conn.execute(text("""
-            INSERT INTO pipeline_log
-                (quarter_processed, table_name, records_imported,
-                 records_invalid, status, duration_seconds, error_message)
-            VALUES (:q, :t, :ri, :rv, :s, :d, :e)
-        """), {
-            "q": quarter, "t": table_name,
-            "ri": records_imported, "rv": records_invalid,
-            "s": status, "d": round(duration, 2), "e": error_msg
-        })
+    """Append one row to pipeline_log. This table persists across re-runs.
+
+    Runs outside the import transaction so the audit entry survives even
+    when the import it describes was rolled back.
+    """
+    PipelineLog.objects.create(
+        quarter_processed=quarter,
+        table_name=table_name,
+        records_imported=records_imported,
+        records_invalid=records_invalid,
+        status=status,
+        duration_seconds=round(duration, 2),
+        error_message=error_msg,
+    )

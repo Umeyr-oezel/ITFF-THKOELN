@@ -20,13 +20,16 @@
 
 Grundlegende Einrichtung bevor es losgeht.
 
-- [ ] Repository klonen und lokale Umgebung einrichten
-- [ ] `requirements.txt` installieren (`pip install -r requirements.txt`)
-- [ ] `.env` Datei lokal anlegen (Vorlage: `.env.example`)
+- [x] Repository klonen und lokale Umgebung einrichten
+- [x] `requirements.txt` installieren (`pip install -r requirements.txt`)
+- [x] `.env` Datei lokal anlegen (Vorlage: `.env.example`)
 - [ ] Datenbank-Credentials eintragen sobald vorhanden
   - Zugangsdaten werden **lokal in `.env` gespeichert**, niemals auf GitHub
   - `.env` ist in `.gitignore` eingetragen
+  - Aktuell Platzhalter in `.env` (siehe Abschnitt 2.8), echte Werte folgen mit PostgreSQL-Zugang
 - [ ] Pipeline einmal lokal testen (`python main.py --skip-download`)
+  - Blockiert bis PostgreSQL-Zugangsdaten vorliegen (Preflight-Check braucht erreichbare DB)
+  - Fix: `modules/__init__.py` war leer, exportiert jetzt wieder `get_engine` (Imports laufen, CLI laeuft)
 
 ---
 
@@ -35,68 +38,91 @@ Grundlegende Einrichtung bevor es losgeht.
 Umstellung von rohem SQL (SQLAlchemy + MySQL) auf Django ORM mit PostgreSQL.
 
 ### 2.1 Django-Projekt initialisieren
-- [ ] Django zu `requirements.txt` hinzufuegen (`django`, `psycopg2-binary`)
-- [ ] Django-Projekt erstellen (`django-admin startproject`)
-- [ ] Django-App fuer die Pipeline erstellen (z.B. `pipeline`)
-- [ ] `settings.py` konfigurieren: PostgreSQL-Verbindung ueber `.env`
-- [ ] `.env.example` aktualisieren mit neuen DB-Feldern (`DB_ENGINE`, `DB_NAME`)
+- [x] Django zu `requirements.txt` hinzufuegen (`django>=5.2,<6.0`, `psycopg2-binary`)
+- [x] Django-Projekt erstellen (`django-admin startproject secpipeline .`)
+- [x] Django-App fuer die Pipeline erstellen (`pipeline`)
+- [x] `settings.py` konfigurieren: PostgreSQL-Verbindung ueber `.env`
+- [x] `.env.example` aktualisieren mit neuen DB-Feldern (`DB_ENGINE`, `DB_NAME`)
 
 ### 2.2 Django-Models definieren
-- [ ] Model `Submission` erstellen (entspricht Tabelle `submissions`)
+- [x] Model `Submission` erstellen (entspricht Tabelle `submissions`)
   - Felder: `accession_number` (PK), `filing_date`, `issuer_cik`, `issuer_name`, `issuer_ticker`, `rptowner_cik`, `rptowner_name`, `is_director`, `is_officer`, `is_ten_percent`, `is_other`, `officer_title`, `created_by`, `source_quarter`, `created_at`
-- [ ] Model `NonderivTrans` erstellen (entspricht `nonderiv_trans`)
+- [x] Model `NonderivTrans` erstellen (entspricht `nonderiv_trans`)
   - FK zu `Submission` via `accession_number` mit `CASCADE`
   - Felder: `trans_date`, `trans_code`, `equity_swap`, `shares`, `price_per_share`, `shares_owned_following`, `nominal_volume`, `is_valid`, `validation_flags`, `created_by`, `source_quarter`, `created_at`
-- [ ] Model `NonderivHolding` erstellen (entspricht `nonderiv_holdings`)
-- [ ] Model `DerivTrans` erstellen (entspricht `deriv_trans`)
-- [ ] Model `DerivHolding` erstellen (entspricht `deriv_holdings`)
-- [ ] Model `ValidationLog` erstellen (entspricht `validation_log`)
-- [ ] Model `PipelineLog` erstellen (entspricht `pipeline_log`)
-- [ ] Indizes in `Meta.indexes` definieren (gleiche Indizes wie aktuell)
-- [ ] Migrations erstellen und ausfuehren (`makemigrations`, `migrate`)
+- [x] Model `NonderivHolding` erstellen (entspricht `nonderiv_holdings`)
+- [x] Model `DerivTrans` erstellen (entspricht `deriv_trans`)
+- [x] Model `DerivHolding` erstellen (entspricht `deriv_holdings`)
+- [x] Model `ValidationLog` erstellen (entspricht `validation_log`)
+- [x] Model `PipelineLog` erstellen (entspricht `pipeline_log`)
+- [x] Indizes in `Meta.indexes` definieren (gleiche Indizes wie aktuell)
+- [x] Migrations erstellen (`makemigrations` -> `0001_initial.py`)
+  <!-- `migrate` (Ausfuehrung gegen die DB) erst moeglich, sobald PostgreSQL-Zugangsdaten vorliegen -->
+- [ ] Migrations ausfuehren (`migrate`) - blockiert bis PostgreSQL-Zugang da ist
 
 ### 2.3 db_manager.py umschreiben
-- [ ] `get_engine()` entfernen - Django verwaltet die Verbindung
-- [ ] `setup_database()` entfernen - Django Migrations uebernehmen das
-- [ ] `CREATE_TABLES` SQL entfernen - durch Django Models ersetzt
-- [ ] `_try_add_foreign_keys()` entfernen - Django setzt FKs automatisch
-- [ ] `import_quarter()` umschreiben auf Django ORM (`bulk_create`, `filter().delete()`)
-- [ ] `_delete_quarter()` umschreiben auf Django ORM
-- [ ] `_execute_with_retry()` anpassen oder entfernen
-- [ ] `log_pipeline_run()` umschreiben auf `PipelineLog.objects.create()`
-- [ ] Idempotenz beibehalten: Delete-then-Insert Strategie
-- [ ] `pipeline_log` wird weiterhin NIE geloescht
+- [x] `get_engine()` entfernen - Django verwaltet die Verbindung
+- [x] `setup_database()` entfernen - Django Migrations uebernehmen das
+- [x] `CREATE_TABLES` SQL entfernen - durch Django Models ersetzt
+- [x] `_try_add_foreign_keys()` entfernen - Django setzt FKs automatisch
+- [x] `import_quarter()` umschreiben auf Django ORM (`bulk_create`, `filter().delete()`)
+- [x] `_delete_quarter()` umschreiben auf Django ORM
+- [x] `_execute_with_retry()` anpassen oder entfernen
+  <!-- Entfernt: war ein Workaround fuer Lock-Timeouts auf dem geteilten MySQL-Server; auf eigener PostgreSQL-DB nicht noetig. Import laeuft jetzt in einer Transaktion (transaction.atomic) pro Quartal. -->
+- [x] `log_pipeline_run()` umschreiben auf `PipelineLog.objects.create()`
+- [x] Idempotenz beibehalten: Delete-then-Insert Strategie
+- [x] `pipeline_log` wird weiterhin NIE geloescht
+- [x] Import filtert Orphan-Zeilen vorab raus und loggt sie (Absprache mit Emil, wegen echtem FK)
 
 ### 2.4 validation.py anpassen
-- [ ] SQL-Queries durch Django ORM ersetzen (`filter`, `annotate`, `F()`)
-- [ ] `_update_main_table()` umschreiben auf `bulk_update()`
-- [ ] `_write_validation_log()` umschreiben auf `bulk_create()`
-- [ ] `_validate_table()` - LEFT JOIN durch Django `select_related` oder Raw-Query ersetzen
-- [ ] Alle 8 Validierungschecks muessen identisch funktionieren
+- [x] SQL-Queries durch Django ORM ersetzen (`filter`, `annotate`, `F()`)
+- [x] `_update_main_table()` umschreiben auf `bulk_update()`
+- [x] `_write_validation_log()` umschreiben auf `bulk_create()`
+- [x] `_validate_table()` - LEFT JOIN durch Django `select_related` oder Raw-Query ersetzen
+  <!-- Geloest ueber values("submission__filing_date") - die FK-Beziehung erzeugt den Join. -->
+- [x] Alle 8 Validierungschecks muessen identisch funktionieren
+  <!-- Die 8 Check-Funktionen sind unveraendert (arbeiten auf DataFrame). Der Orphan-Check bleibt als Sicherheitsnetz: durch echten FK + Orphan-Filter im Import findet er normalerweise nichts mehr. -->
+- [x] Numerische Spalten nach ORM-Laden mit `pd.to_numeric` casten (sonst crashen `<0`-Checks bei NULL)
 
 ### 2.5 evaluation.py anpassen
-- [ ] SQL-Queries durch Django ORM ersetzen
-- [ ] `_get_available_months()` umschreiben
-- [ ] `query_monthly_ranking()` umschreiben (GROUP BY mit `values().annotate()`)
-- [ ] `_query_monthly_totals()` umschreiben
-- [ ] `_get_pipeline_stats()` umschreiben
-- [ ] `_retry_query()` anpassen oder durch Django Connection-Handling ersetzen
-- [ ] MySQL-spezifisches SQL (z.B. `YEAR()`, `MONTH()`) durch Django-Funktionen ersetzen (`ExtractYear`, `ExtractMonth`)
+- [x] SQL-Queries durch Django ORM ersetzen
+- [x] `_get_available_months()` umschreiben
+- [x] `query_monthly_ranking()` umschreiben (GROUP BY mit `values().annotate()`)
+- [x] `_query_monthly_totals()` umschreiben
+- [x] `_get_pipeline_stats()` umschreiben
+- [x] `_retry_query()` anpassen oder durch Django Connection-Handling ersetzen
+  <!-- Entfernt - war Retry-Logik fuer den geteilten MySQL-Server; Django verwaltet Connections selbst. engine-Parameter aus allen Funktionen entfernt. -->
+- [x] MySQL-spezifisches SQL (z.B. `YEAR()`, `MONTH()`) durch Django-Funktionen ersetzen (`ExtractMonth`, `trans_date__year`-Lookup)
 
 ### 2.6 Restliche Anpassungen
-- [ ] `config.py` anpassen: `DB_CONFIG` und `SCHEMA_NAME` durch Django-Settings ersetzen
-- [ ] `main.py` anpassen: `django.setup()` am Anfang aufrufen
-- [ ] `modules/__init__.py` anpassen: `get_engine()` entfernen
-- [ ] `pymysql` aus `requirements.txt` entfernen
-- [ ] Alte SQLAlchemy-Imports entfernen
+- [x] `config.py` anpassen: `DB_CONFIG` und `SCHEMA_NAME` durch Django-Settings ersetzen
+- [x] `main.py` anpassen: `django.setup()` am Anfang aufrufen (vor allen Modul-Importen)
+  <!-- preflight_checks prueft DB jetzt ueber django.db.connection statt SQLAlchemy. setup_database()-Aufruf entfernt (migrate uebernimmt das Schema). -->
+- [x] `modules/__init__.py` anpassen: `get_engine()` entfernen
+- [x] `pymysql` aus `requirements.txt` entfernen (auch `sqlalchemy`)
+- [x] Alte SQLAlchemy-Imports entfernen
 
 ### 2.7 Testen
-- [ ] Migrations laufen fehlerfrei durch
-- [ ] Pipeline laeuft komplett mit PostgreSQL
-- [ ] Datenimport funktioniert idempotent
-- [ ] Validierung liefert gleiche Ergebnisse wie vorher
-- [ ] Evaluation/Charts werden korrekt generiert
-- [ ] Unter `/docs` dokumentieren: `django_migration.md`
+Vorab ohne DB getestet: `python manage.py check` (0 Probleme), `makemigrations`
+(0001_initial mit allen 7 Tabellen), `py_compile` aller Module, `python main.py
+--help` (django.setup + komplette Import-Kette laden sauber). Der Rest braucht
+echten PostgreSQL-Zugang.
+- [ ] Migrations laufen fehlerfrei durch (`migrate`) - blockiert bis DB-Zugang
+- [ ] Pipeline laeuft komplett mit PostgreSQL - blockiert bis DB-Zugang
+- [ ] Datenimport funktioniert idempotent - blockiert bis DB-Zugang
+- [ ] Validierung liefert gleiche Ergebnisse wie vorher - blockiert bis DB-Zugang
+- [ ] Evaluation/Charts werden korrekt generiert - blockiert bis DB-Zugang
+- [x] Unter `/docs` dokumentieren: `django_migration.md`
+
+### 2.8 PostgreSQL-Zugangsdaten
+Stand: Die PostgreSQL-Zugangsdaten liegen **noch nicht vor**. Bis dahin wird
+ueberall mit Platzhaltern gearbeitet, damit die Umstellung trotzdem vorbereitet
+werden kann.
+
+- [x] In `.env` Platzhalter fuer die DB-Zugangsdaten eintragen (`PLATZHALTER_*`)
+- [ ] Echte PostgreSQL-Zugangsdaten in `.env` eintragen, sobald sie vorliegen
+- [ ] `.env.example` auf PostgreSQL-Felder umstellen (`DB_ENGINE`, `DB_NAME`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`)
+- [ ] Pruefen, dass keine echten Zugangsdaten im Code oder auf GitHub landen (nur ueber `.env`)
 
 ---
 
@@ -105,19 +131,23 @@ Umstellung von rohem SQL (SQLAlchemy + MySQL) auf Django ORM mit PostgreSQL.
 Jede Funktion und jedes Modul braucht einen Docstring. Bestehende Docstrings beibehalten und nur fehlende ergaenzen. Team 1 fasst bei der Django-Umstellung ohnehin jede Datei an - Docstrings dabei gleich mitzumachen ist effizient.
 
 ### 3.1 Bestandsaufnahme
-- [ ] Alle Funktionen ohne Docstring identifizieren
-- [ ] Liste der fehlenden Docstrings erstellen
+- [x] Alle Funktionen ohne Docstring identifizieren (AST-Audit ueber alle Module)
+- [x] Liste der fehlenden Docstrings erstellen
+  <!-- Ergebnis: fast alles war bereits dokumentiert. Fehlend nur `Submission.__str__` (ergaenzt) und die inneren Django `class Meta` (bleiben bewusst ohne Docstring, Absprache mit Emil). Zusatz: `parser.parse_all_quarters` hatte einen Args-/Returns-Block - auf den natuerlichen Stil (3.3) umgeschrieben. -->
+
 
 ### 3.2 Docstrings schreiben
-- [ ] `config.py` - Modul-Docstring pruefen/ergaenzen
-- [ ] `main.py` - alle Funktionen pruefen (`parse_args`, `setup_logging`, `run_pipeline`, `main`)
-- [ ] `modules/__init__.py` - Modul-Docstring und exportierte Funktionen
-- [ ] `modules/downloader.py` - alle Funktionen pruefen
-- [ ] `modules/parser.py` - alle Funktionen pruefen
-- [ ] `modules/data_preparation.py` - alle Funktionen pruefen (z.B. `_clean_columns`, `_parse_date`)
-- [ ] `modules/db_manager.py` - alle Funktionen pruefen
-- [ ] `modules/validation.py` - alle Funktionen pruefen
-- [ ] `modules/evaluation.py` - alle Funktionen pruefen (z.B. `_format_value`, `_add_logo`, `_setup_chart_style`)
+- [x] `config.py` - Modul-Docstring pruefen/ergaenzen
+- [x] `main.py` - alle Funktionen pruefen (`parse_args`, `setup_logging`, `main`, ...)
+  <!-- Hinweis: das im Plan genannte `run_pipeline` existiert nicht; vorhandene Funktionen sind parse_args, preflight_checks, print_summary, main, setup_logging, setup_directories - alle haben Docstrings. -->
+- [x] `modules/__init__.py` - Modul-Docstring (Re-Export von get_engine in 2.6 entfernt)
+- [x] `modules/downloader.py` - alle Funktionen pruefen
+- [x] `modules/parser.py` - alle Funktionen pruefen
+- [x] `modules/data_preparation.py` - alle Funktionen pruefen (z.B. `_clean_columns`, `_parse_date`)
+- [x] `modules/db_manager.py` - alle Funktionen pruefen
+- [x] `modules/validation.py` - alle Funktionen pruefen
+- [x] `modules/evaluation.py` - alle Funktionen pruefen (z.B. `_format_value`, `_add_logo`, `_setup_chart_style`)
+- [x] `pipeline/models.py` - Models + `__str__` (in Aufgabe 2 erstellt, hier mitgeprueft)
 
 ### 3.3 Stil-Regeln fuer Docstrings
 - Natuerlicher, erklaerungsreicher Stil (kein Schema-Docstring)
@@ -133,7 +163,7 @@ Jede Funktion und jedes Modul braucht einen Docstring. Bestehende Docstrings bei
       """
   ```
 - Keine `Args:` / `Returns:` Bloecke - stattdessen natuerlich im Text erwaehnen
-- Unter `/docs` dokumentieren: `docstring_guidelines.md`
+- [x] Unter `/docs` dokumentieren: `docstring_guidelines.md`
 
 ---
 
@@ -262,3 +292,4 @@ Diese Quellen werden im Projekt verwendet. Keine anderen ohne Absprache:
 | Datum | Aenderung | Begruendung |
 |-------|-----------|-------------|
 | 30.05.2026 | Aufgaben 3 und 4 getauscht: Docstrings → Team 1, Hardcoded → Team 2 | Vermeidung von Merge-Konflikten bei config.py (TARGET_YEAR wird von Team 2 in Aufgabe 5 umgebaut) |
+| 30.05.2026 | Abschnitt 2.8 (PostgreSQL-Zugangsdaten) ergaenzt | PostgreSQL-Zugangsdaten liegen noch nicht vor; bis dahin Arbeit mit Platzhaltern in `.env` (Absprache mit Emil) |

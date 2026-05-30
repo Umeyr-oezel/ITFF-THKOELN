@@ -111,10 +111,9 @@ def parse_quarter(quarter_dir):
 def parse_all_quarters(zip_list):
     """Extract and parse all downloaded ZIPs.
 
-    Args:
-        zip_list: list of (quarter_label, zip_path) from downloader
-
-    Returns dict: quarter_label -> parsed data dict.
+    Takes the list of (quarter_label, zip_path) tuples from the
+    downloader and returns a dict mapping each quarter_label to its
+    parsed data dict.
     """
     os.makedirs(config.EXTRACTED_DIR, exist_ok=True)
     all_data = {}

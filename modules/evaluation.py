@@ -5,7 +5,6 @@ and an auto-generated PDF report.
 """
 import os
 import logging
-import time
 
 import matplotlib
 matplotlib.use("Agg")  # no GUI needed
@@ -14,31 +13,18 @@ import matplotlib.image as mpimg  # noqa: E402
 import seaborn as sns  # noqa: E402, F401
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
-from sqlalchemy import text  # noqa: E402
+from django.db.models import Count, F, Max, Sum  # noqa: E402
+from django.db.models.functions import ExtractMonth  # noqa: E402
 
-from modules import get_engine  # noqa: E402
+from pipeline.models import (  # noqa: E402
+    DerivTrans,
+    NonderivTrans,
+    Submission,
+    ValidationLog,
+)
 import config  # noqa: E402
 
 logger = logging.getLogger(__name__)
-
-
-def _retry_query(engine, query_func, max_retries=3):
-    """Retry a DB query if the connection drops (shared server issue)."""
-    import modules as dbm
-    last_error = None
-    for attempt in range(max_retries):
-        try:
-            return query_func(engine)
-        except Exception as e:
-            last_error = e
-            if attempt < max_retries - 1:
-                logger.warning(f"DB query failed (attempt {attempt + 1}): {e}")
-                dbm._engine = None
-                engine = dbm.get_engine()
-                time.sleep(1)
-            else:
-                raise
-    raise last_error
 
 # chart color scheme
 COLOR_PURCHASE = "#1a6b54"
@@ -75,53 +61,53 @@ MONTH_NAMES = {
 
 # --- DB queries ---
 
-def _get_available_months(engine):
+def _get_available_months():
     """Which months in TARGET_YEAR actually have valid P or S data?"""
-    def _query(eng):
-        with eng.connect() as conn:
-            rows = conn.execute(text("""
-                SELECT DISTINCT MONTH(trans_date) AS m
-                FROM nonderiv_trans
-                WHERE is_valid = 1
-                  AND trans_code IN ('P', 'S')
-                  AND YEAR(trans_date) = :yr
-                ORDER BY m
-            """), {"yr": config.TARGET_YEAR}).fetchall()
-        return [r[0] for r in rows]
-    return _retry_query(engine, _query)
+    months = (
+        NonderivTrans.objects
+        .filter(
+            is_valid=True,
+            trans_code__in=["P", "S"],
+            trans_date__year=config.TARGET_YEAR,
+        )
+        .annotate(m=ExtractMonth("trans_date"))
+        .values_list("m", flat=True)
+        .distinct()
+        .order_by("m")
+    )
+    return list(months)
 
 
-def query_monthly_ranking(engine, trans_code, order_col, month):
+def query_monthly_ranking(trans_code, order_col, month):
     """Top-5 companies for a given metric in one month.
 
-    GROUP BY issuer_cik with MAX() on name/ticker because the
-    server has ONLY_FULL_GROUP_BY enabled.
+    Groups by the issuer (reached through the submission FK) and takes
+    MAX() of name/ticker so the aggregate stays valid even where a
+    company's label varies slightly between filings.
     """
-    # ORDER BY needs f-string - MySQL won't accept params there
-    sql = f"""
-        SELECT
-            s.issuer_cik,
-            MAX(s.issuer_name) AS issuer_name,
-            MAX(s.issuer_ticker) AS issuer_ticker,
-            SUM(t.shares) AS total_shares,
-            COUNT(*) AS num_transactions,
-            SUM(t.nominal_volume) AS total_volume
-        FROM nonderiv_trans t
-        JOIN submissions s ON t.accession_number = s.accession_number
-        WHERE t.trans_code = :code
-            AND t.is_valid = 1
-            AND YEAR(t.trans_date) = :yr
-            AND MONTH(t.trans_date) = :month
-        GROUP BY s.issuer_cik
-        ORDER BY {order_col} DESC
-        LIMIT 5
-    """
-    def _query(eng):
-        with eng.connect() as conn:
-            return pd.read_sql(text(sql), conn, params={
-                "code": trans_code, "yr": config.TARGET_YEAR, "month": month
-            })
-    return _retry_query(engine, _query)
+    rows = (
+        NonderivTrans.objects
+        .filter(
+            trans_code=trans_code,
+            is_valid=True,
+            trans_date__year=config.TARGET_YEAR,
+            trans_date__month=month,
+        )
+        .values(issuer_cik=F("submission__issuer_cik"))
+        .annotate(
+            issuer_name=Max("submission__issuer_name"),
+            issuer_ticker=Max("submission__issuer_ticker"),
+            total_shares=Sum("shares"),
+            num_transactions=Count("id"),
+            total_volume=Sum("nominal_volume"),
+        )
+        .order_by(f"-{order_col}")[:5]
+    )
+    df = pd.DataFrame(list(rows))
+    if not df.empty:
+        df["total_shares"] = pd.to_numeric(df["total_shares"], errors="coerce")
+        df["total_volume"] = pd.to_numeric(df["total_volume"], errors="coerce")
+    return df
 
 
 # --- Chart helpers ---
@@ -247,31 +233,34 @@ def create_bar_chart(data, month_num, metric_col, metric_label,
 
 # --- Overview charts (year-level) ---
 
-def _query_monthly_totals(engine):
+def _query_monthly_totals():
     """Aggregated P/S totals per month - used by trend + sentiment charts."""
-    sql = text("""
-        SELECT
-            MONTH(t.trans_date) AS month_num,
-            t.trans_code,
-            SUM(t.shares) AS total_shares,
-            COUNT(*) AS num_transactions,
-            SUM(t.nominal_volume) AS total_volume
-        FROM nonderiv_trans t
-        WHERE t.is_valid = 1
-          AND t.trans_code IN ('P', 'S')
-          AND YEAR(t.trans_date) = :yr
-        GROUP BY MONTH(t.trans_date), t.trans_code
-        ORDER BY month_num
-    """)
-    def _query(eng):
-        with eng.connect() as conn:
-            return pd.read_sql(sql, conn, params={"yr": config.TARGET_YEAR})
-    return _retry_query(engine, _query)
+    rows = (
+        NonderivTrans.objects
+        .filter(
+            is_valid=True,
+            trans_code__in=["P", "S"],
+            trans_date__year=config.TARGET_YEAR,
+        )
+        .annotate(month_num=ExtractMonth("trans_date"))
+        .values("month_num", "trans_code")
+        .annotate(
+            total_shares=Sum("shares"),
+            num_transactions=Count("id"),
+            total_volume=Sum("nominal_volume"),
+        )
+        .order_by("month_num")
+    )
+    df = pd.DataFrame(list(rows))
+    if not df.empty:
+        df["total_shares"] = pd.to_numeric(df["total_shares"], errors="coerce")
+        df["total_volume"] = pd.to_numeric(df["total_volume"], errors="coerce")
+    return df
 
 
-def create_trend_chart(engine, output_dir):
+def create_trend_chart(output_dir):
     """Line chart comparing monthly purchase vs sale volume."""
-    df = _query_monthly_totals(engine)
+    df = _query_monthly_totals()
     if df.empty:
         return None
 
@@ -337,9 +326,9 @@ def create_trend_chart(engine, output_dir):
     return filepath
 
 
-def create_sentiment_chart(engine, output_dir):
+def create_sentiment_chart(output_dir):
     """P/S ratio per month - above 1.0 means more buying than selling."""
-    df = _query_monthly_totals(engine)
+    df = _query_monthly_totals()
     if df.empty:
         return None
 
@@ -407,20 +396,20 @@ def create_sentiment_chart(engine, output_dir):
     return filepath
 
 
-def create_heatmap(engine, output_dir):
+def create_heatmap(output_dir):
     """Heatmap of companies that keep showing up in Top-5 sales.
 
     Only shows companies present in at least 2 different months.
     Cells show rank position (#1-#5), darker = higher rank.
     """
-    months = _get_available_months(engine)
+    months = _get_available_months()
     if not months:
         return None
 
     # grab top-5 sales (by volume) for each month
     all_rankings = []
     for month in months:
-        df = query_monthly_ranking(engine, "S", "total_volume", month)
+        df = query_monthly_ranking("S", "total_volume", month)
         if df.empty:
             continue
         df["month_num"] = month
@@ -552,8 +541,7 @@ def export_table(data, month_num, metric_label, trans_type, output_dir):
 
 # --- PDF report ---
 
-def generate_pdf_report(engine, monthly_charts_dir,
-                        overview_charts_dir, output_dir):
+def generate_pdf_report(monthly_charts_dir, overview_charts_dir, output_dir):
     """Build a PDF with title page, stats, overview charts, and monthly charts."""
     from fpdf import FPDF
 
@@ -583,7 +571,7 @@ def generate_pdf_report(engine, monthly_charts_dir,
     pdf.cell(0, 12, "Pipeline Summary", ln=True)
     pdf.ln(5)
 
-    stats = _get_pipeline_stats(engine)
+    stats = _get_pipeline_stats()
     pdf.set_font("Helvetica", "", 12)
     for label, value in stats:
         pdf.cell(120, 8, label, ln=False)
@@ -609,7 +597,7 @@ def generate_pdf_report(engine, monthly_charts_dir,
             pdf.ln(5)
 
     # monthly breakdown
-    months = _get_available_months(engine)
+    months = _get_available_months()
     for month in months:
         month_str = f"{year}-{month:02d}"
         display = f"{MONTH_NAMES[month]} {year}"
@@ -646,71 +634,54 @@ def generate_pdf_report(engine, monthly_charts_dir,
     return pdf_path
 
 
-def _get_pipeline_stats(engine):
+def _get_pipeline_stats():
     """Pull key numbers from the DB for the PDF summary page."""
-    def _query(eng):
-        return _get_pipeline_stats_inner(eng)
-    return _retry_query(engine, _query)
-
-
-def _get_pipeline_stats_inner(engine):
-    """Actually runs the stats queries (separated for retry wrapper)."""
     stats = []
-    with engine.connect() as conn:
-        n_sub = conn.execute(
-            text("SELECT COUNT(*) FROM submissions")
-        ).scalar()
-        stats.append(("Total Submissions (Filings)", f"{n_sub:,}"))
 
-        n_nd = conn.execute(
-            text("SELECT COUNT(*) FROM nonderiv_trans")
-        ).scalar()
-        stats.append(("Non-Derivative Transactions", f"{n_nd:,}"))
+    n_sub = Submission.objects.count()
+    stats.append(("Total Submissions (Filings)", f"{n_sub:,}"))
 
-        n_dt = conn.execute(
-            text("SELECT COUNT(*) FROM deriv_trans")
-        ).scalar()
-        stats.append(("Derivative Transactions", f"{n_dt:,}"))
+    n_nd = NonderivTrans.objects.count()
+    stats.append(("Non-Derivative Transactions", f"{n_nd:,}"))
 
-        n_valid_nd = conn.execute(
-            text("SELECT COUNT(*) FROM nonderiv_trans WHERE is_valid = 1")
-        ).scalar()
-        pct_nd = (n_valid_nd / n_nd * 100) if n_nd else 0
-        stats.append((
-            "Valid Non-Deriv Transactions",
-            f"{n_valid_nd:,} ({pct_nd:.1f}%)",
-        ))
+    n_dt = DerivTrans.objects.count()
+    stats.append(("Derivative Transactions", f"{n_dt:,}"))
 
-        n_valid_dt = conn.execute(
-            text("SELECT COUNT(*) FROM deriv_trans WHERE is_valid = 1")
-        ).scalar()
-        pct_dt = (n_valid_dt / n_dt * 100) if n_dt else 0
-        stats.append((
-            "Valid Deriv Transactions",
-            f"{n_valid_dt:,} ({pct_dt:.1f}%)",
-        ))
+    n_valid_nd = NonderivTrans.objects.filter(is_valid=True).count()
+    pct_nd = (n_valid_nd / n_nd * 100) if n_nd else 0
+    stats.append((
+        "Valid Non-Deriv Transactions",
+        f"{n_valid_nd:,} ({pct_nd:.1f}%)",
+    ))
 
-        n_vlog = conn.execute(
-            text("SELECT COUNT(*) FROM validation_log")
-        ).scalar()
-        stats.append(("Validation Log Entries", f"{n_vlog:,}"))
+    n_valid_dt = DerivTrans.objects.filter(is_valid=True).count()
+    pct_dt = (n_valid_dt / n_dt * 100) if n_dt else 0
+    stats.append((
+        "Valid Deriv Transactions",
+        f"{n_valid_dt:,} ({pct_dt:.1f}%)",
+    ))
 
-        quarters = conn.execute(text(
-            "SELECT DISTINCT source_quarter FROM submissions "
-            "ORDER BY source_quarter"
-        )).fetchall()
-        q_list = ", ".join(r[0] for r in quarters)
-        stats.append(("Quarters Loaded", q_list))
+    n_vlog = ValidationLog.objects.count()
+    stats.append(("Validation Log Entries", f"{n_vlog:,}"))
 
-        n_companies = conn.execute(text(
-            "SELECT COUNT(DISTINCT issuer_cik) FROM submissions"
-        )).scalar()
-        stats.append(("Unique Companies (Issuers)", f"{n_companies:,}"))
+    quarters = (
+        Submission.objects
+        .values_list("source_quarter", flat=True)
+        .distinct()
+        .order_by("source_quarter")
+    )
+    q_list = ", ".join(quarters)
+    stats.append(("Quarters Loaded", q_list))
 
-        n_insiders = conn.execute(text(
-            "SELECT COUNT(DISTINCT rptowner_cik) FROM submissions"
-        )).scalar()
-        stats.append(("Unique Insiders (Reporters)", f"{n_insiders:,}"))
+    n_companies = Submission.objects.aggregate(
+        n=Count("issuer_cik", distinct=True)
+    )["n"]
+    stats.append(("Unique Companies (Issuers)", f"{n_companies:,}"))
+
+    n_insiders = Submission.objects.aggregate(
+        n=Count("rptowner_cik", distinct=True)
+    )["n"]
+    stats.append(("Unique Insiders (Reporters)", f"{n_insiders:,}"))
 
     return stats
 
@@ -723,13 +694,11 @@ def generate_all_evaluations():
     For each month with data: 6 bar charts (3 purchase metrics,
     3 sale metrics) plus matching CSV tables.
     """
-    engine = get_engine()
-
     os.makedirs(config.CHARTS_DIR, exist_ok=True)
     os.makedirs(config.CHARTS_OVERVIEW_DIR, exist_ok=True)
     os.makedirs(config.TABLES_DIR, exist_ok=True)
 
-    months = _get_available_months(engine)
+    months = _get_available_months()
     logger.info(f"Generating evaluations for {len(months)} months...")
 
     chart_count = 0
@@ -739,7 +708,7 @@ def generate_all_evaluations():
         for trans_code, metric_col, order_col, metric_label, file_tag in EVALUATIONS:
             trans_type = "Purchases" if trans_code == "P" else "Sales"
 
-            df = query_monthly_ranking(engine, trans_code, order_col, month)
+            df = query_monthly_ranking(trans_code, order_col, month)
 
             if df.empty:
                 logger.info(
@@ -764,12 +733,12 @@ def generate_all_evaluations():
         logger.info(f"  {config.TARGET_YEAR}-{month:02d}: done")
 
     # year-level overview
-    create_trend_chart(engine, config.CHARTS_OVERVIEW_DIR)
-    create_sentiment_chart(engine, config.CHARTS_OVERVIEW_DIR)
-    create_heatmap(engine, config.CHARTS_OVERVIEW_DIR)
+    create_trend_chart(config.CHARTS_OVERVIEW_DIR)
+    create_sentiment_chart(config.CHARTS_OVERVIEW_DIR)
+    create_heatmap(config.CHARTS_OVERVIEW_DIR)
 
     generate_pdf_report(
-        engine, config.CHARTS_DIR,
+        config.CHARTS_DIR,
         config.CHARTS_OVERVIEW_DIR, config.OUTPUT_DIR,
     )
 

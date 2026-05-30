@@ -9,8 +9,24 @@ import os
 import sys
 import time
 
-from modules import downloader, parser, data_preparation, db_manager, validation, evaluation
-import config
+import django
+
+# Django must be configured before importing anything that touches the
+# ORM, so this runs before the pipeline module imports below.
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "secpipeline.settings")
+django.setup()
+
+from django.conf import settings  # noqa: E402
+
+from modules import (  # noqa: E402
+    data_preparation,
+    db_manager,
+    downloader,
+    evaluation,
+    parser,
+    validation,
+)
+import config  # noqa: E402
 
 
 def parse_args():
@@ -40,24 +56,23 @@ def preflight_checks(skip_sec=False):
     """
     issues = []
 
-    if not config.DB_CONFIG["user"]:
+    db = settings.DATABASES["default"]
+    if not db.get("USER"):
         issues.append(
             "DB_USER is empty - did you create a .env file? "
             "(copy .env.example and fill in your credentials)"
         )
-    if not config.DB_CONFIG["password"]:
+    if not db.get("PASSWORD"):
         issues.append("DB_PASSWORD is empty - check your .env file")
 
     # try the DB connection
     if not issues:
         try:
-            from sqlalchemy import text
-            engine = db_manager.get_engine()
-            with engine.connect() as conn:
-                conn.execute(text("SELECT 1"))
+            from django.db import connection
+            connection.ensure_connection()
             logging.info("Pre-flight: DB connection OK")
         except Exception as e:
-            issues.append(f"Cannot connect to MySQL: {e}")
+            issues.append(f"Cannot connect to PostgreSQL: {e}")
 
     # SEC reachable? (skip when we only need DB data)
     if not skip_sec:
@@ -157,12 +172,11 @@ def main():
     # phase 3 - clean, merge, enrich
     prepared = data_preparation.prepare_all_data(raw_data)
 
-    # phase 4 - push into MySQL
+    # phase 4 - push into PostgreSQL (schema is managed by Django migrations)
     if not args.skip_import:
-        db_manager.setup_database()
         db_manager.import_all_data(prepared)
     else:
-        logging.info("--skip-import: skipping DB setup and import")
+        logging.info("--skip-import: skipping DB import")
 
     # phase 5 - run validation checks
     validation.run_validation()
