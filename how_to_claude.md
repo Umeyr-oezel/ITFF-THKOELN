@@ -1,5 +1,8 @@
 # Claude Code — maximales Potenzial ausschöpfen
 
+git clone https://github.com/Umeyr-oezel/ITFF-THKOELN.git
+  cd ITFF-THKOELN
+
 ## 0. Grundprinzipien
 
 Claude Code startet jede Session mit leerem Kontext. Alles was Claude wissen soll, muss aktiv geladen werden. Das Grundprinzip: **weniger ist mehr.** Claude hat effektiv 100–150 nutzbare Instruktions-Slots — jede überflüssige Zeile verdrängt eine wichtige.
