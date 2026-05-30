@@ -34,3 +34,4 @@ Dashboard lt. Miebs:
 
 Recherche:
 -Claude OPUS bei Tiefenrecherche und SONNET bei normaler.
+FUCK
