@@ -1,3 +1,5 @@
+sjoiadjfosdijf
+
 Preisdaten, Makro etc.: 
 Normalerweise haben wir anscheinend Quellen aber falls diese nicht ausreichen oder wir bessere Ideen haben
 -Twelve Data (Preis WW)
