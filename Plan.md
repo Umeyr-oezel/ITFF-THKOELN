@@ -10,8 +10,8 @@
 
 | Team | Mitglieder | Aufgaben |
 |------|-----------|----------|
-| Team 1 | Emil, Umeyr | Aufgabe 1 (Setup), Aufgabe 2 (Django-Umstellung), Aufgabe 3 (Hardcoded → Flexibel) |
-| Team 2 | Kenan, Matthias | Aufgabe 1 (Setup), Aufgabe 4 (Docstrings), Aufgabe 5 (Historie erweitern) |
+| Team 1 | Emil, Umeyr | Aufgabe 1 (Setup), Aufgabe 2 (Django-Umstellung), Aufgabe 3 (Docstrings) |
+| Team 2 | Kenan, Matthias | Aufgabe 1 (Setup), Aufgabe 4 (Hardcoded → Flexibel), Aufgabe 5 (Historie erweitern) |
 | Alle | Emil, Umeyr, Kenan, Matthias | Aufgabe 6 (Code Review / Bugsuche) |
 
 ---
@@ -100,42 +100,15 @@ Umstellung von rohem SQL (SQLAlchemy + MySQL) auf Django ORM mit PostgreSQL.
 
 ---
 
-## Aufgabe 3: Hardcoded-Werte flexibel machen (Team 1 - Emil & Umeyr)
+## Aufgabe 3: Docstrings vervollstaendigen (Team 1 - Emil & Umeyr)
 
-Alle hartcodierten Werte sollen ueber `config.py` oder `.env` konfigurierbar sein.
+Jede Funktion und jedes Modul braucht einen Docstring. Bestehende Docstrings beibehalten und nur fehlende ergaenzen. Team 1 fasst bei der Django-Umstellung ohnehin jede Datei an - Docstrings dabei gleich mitzumachen ist effizient.
 
-### 3.1 Identifizierte Hardcoded-Stellen
-
-- [ ] `config.py:12` - `USER_AGENT` String → in `.env` auslagern
-- [ ] `config.py:22` - `SCHEMA_NAME = "group01"` → in `.env` auslagern (wird nach Django-Umstellung evtl. obsolet)
-- [ ] `config.py:34` - `TARGET_YEAR = 2025` → in `.env` oder als CLI-Parameter
-- [ ] `config.py:36` - `REQUEST_DELAY = 0.2` → in `.env` auslagern
-- [ ] `config.py:37` - `CREATED_BY = "group01"` → in `.env` auslagern
-- [ ] `evaluation.py:46-51` - Farbwerte (`COLOR_PURCHASE`, etc.) → in `config.py` als Dictionary
-- [ ] `evaluation.py:54-55` - `LOGO_PATH` → in `config.py`
-- [ ] `evaluation.py:191` - `MONTH_NAMES` Dictionary → pruefen ob `calendar` Modul besser waere
-- [ ] `db_manager.py:195` - `"SET innodb_lock_wait_timeout = 120"` → in `config.py` (entfaellt bei PostgreSQL)
-- [ ] `validation.py:14-17` - `KNOWN_TRANS_CODES` Set → in `config.py`
-- [ ] `validation.py:19` - `MAX_REASONABLE_PRICE = 1_000_000` → in `config.py`
-- [ ] `downloader.py:46` - `max_retries=3` Default → in `config.py`
-
-### 3.2 Umsetzung
-- [ ] Alle identifizierten Werte nach `config.py` oder `.env` verschieben
-- [ ] `.env.example` aktualisieren mit allen neuen Variablen
-- [ ] Bestehende Funktionalitaet darf sich nicht aendern
-- [ ] Unter `/docs` dokumentieren: `configuration.md`
-
----
-
-## Aufgabe 4: Docstrings vervollstaendigen (Team 2 - Kenan & Matthias)
-
-Jede Funktion und jedes Modul braucht einen Docstring. Bestehende Docstrings beibehalten und nur fehlende ergaenzen.
-
-### 4.1 Bestandsaufnahme
+### 3.1 Bestandsaufnahme
 - [ ] Alle Funktionen ohne Docstring identifizieren
 - [ ] Liste der fehlenden Docstrings erstellen
 
-### 4.2 Docstrings schreiben
+### 3.2 Docstrings schreiben
 - [ ] `config.py` - Modul-Docstring pruefen/ergaenzen
 - [ ] `main.py` - alle Funktionen pruefen (`parse_args`, `setup_logging`, `run_pipeline`, `main`)
 - [ ] `modules/__init__.py` - Modul-Docstring und exportierte Funktionen
@@ -146,7 +119,7 @@ Jede Funktion und jedes Modul braucht einen Docstring. Bestehende Docstrings bei
 - [ ] `modules/validation.py` - alle Funktionen pruefen
 - [ ] `modules/evaluation.py` - alle Funktionen pruefen (z.B. `_format_value`, `_add_logo`, `_setup_chart_style`)
 
-### 4.3 Stil-Regeln fuer Docstrings
+### 3.3 Stil-Regeln fuer Docstrings
 - Natuerlicher, erklaerungsreicher Stil (kein Schema-Docstring)
 - Englisch
 - Erklaert **warum**, nicht nur **was**
@@ -161,6 +134,33 @@ Jede Funktion und jedes Modul braucht einen Docstring. Bestehende Docstrings bei
   ```
 - Keine `Args:` / `Returns:` Bloecke - stattdessen natuerlich im Text erwaehnen
 - Unter `/docs` dokumentieren: `docstring_guidelines.md`
+
+---
+
+## Aufgabe 4: Hardcoded-Werte flexibel machen (Team 2 - Kenan & Matthias)
+
+Alle hartcodierten Werte sollen ueber `config.py` oder `.env` konfigurierbar sein. Team 2 uebernimmt diese Aufgabe zusammen mit der Historie-Erweiterung (Aufgabe 5), damit alle config-Aenderungen in einer Hand liegen und keine Merge-Konflikte entstehen.
+
+### 4.1 Identifizierte Hardcoded-Stellen
+
+- [ ] `config.py:12` - `USER_AGENT` String → in `.env` auslagern
+- [ ] `config.py:22` - `SCHEMA_NAME = "group01"` → in `.env` auslagern (wird nach Django-Umstellung evtl. obsolet)
+- [ ] `config.py:34` - `TARGET_YEAR = 2025` → wird in Aufgabe 5 zu `TARGET_YEARS` umgebaut
+- [ ] `config.py:36` - `REQUEST_DELAY = 0.2` → in `.env` auslagern
+- [ ] `config.py:37` - `CREATED_BY = "group01"` → in `.env` auslagern
+- [ ] `evaluation.py:46-51` - Farbwerte (`COLOR_PURCHASE`, etc.) → in `config.py` als Dictionary
+- [ ] `evaluation.py:54-55` - `LOGO_PATH` → in `config.py`
+- [ ] `evaluation.py:191` - `MONTH_NAMES` Dictionary → pruefen ob `calendar` Modul besser waere
+- [ ] `db_manager.py:195` - `"SET innodb_lock_wait_timeout = 120"` → in `config.py` (entfaellt bei PostgreSQL)
+- [ ] `validation.py:14-17` - `KNOWN_TRANS_CODES` Set → in `config.py`
+- [ ] `validation.py:19` - `MAX_REASONABLE_PRICE = 1_000_000` → in `config.py`
+- [ ] `downloader.py:46` - `max_retries=3` Default → in `config.py`
+
+### 4.2 Umsetzung
+- [ ] Alle identifizierten Werte nach `config.py` oder `.env` verschieben
+- [ ] `.env.example` aktualisieren mit allen neuen Variablen
+- [ ] Bestehende Funktionalitaet darf sich nicht aendern
+- [ ] Unter `/docs` dokumentieren: `configuration.md`
 
 ---
 
@@ -261,4 +261,4 @@ Diese Quellen werden im Projekt verwendet. Keine anderen ohne Absprache:
 
 | Datum | Aenderung | Begruendung |
 |-------|-----------|-------------|
-| _noch leer_ | | |
+| 30.05.2026 | Aufgaben 3 und 4 getauscht: Docstrings → Team 1, Hardcoded → Team 2 | Vermeidung von Merge-Konflikten bei config.py (TARGET_YEAR wird von Team 2 in Aufgabe 5 umgebaut) |
