@@ -2,6 +2,8 @@
 Generates all evaluations: monthly Top-5/Bottom-5 bar charts,
 overview charts (trend, sentiment, heatmap), CSV exports,
 and an auto-generated PDF report.
+
+Runs per year - iterates over all TARGET_YEARS from config.
 """
 import os
 import logging
@@ -61,14 +63,14 @@ MONTH_NAMES = {
 
 # --- DB queries ---
 
-def _get_available_months():
-    """Which months in TARGET_YEAR actually have valid P or S data?"""
+def _get_available_months(year):
+    """Which months in the given year actually have valid P or S data?"""
     months = (
         NonderivTrans.objects
         .filter(
             is_valid=True,
             trans_code__in=["P", "S"],
-            trans_date__year=config.TARGET_YEAR,
+            trans_date__year=year,
         )
         .annotate(m=ExtractMonth("trans_date"))
         .values_list("m", flat=True)
@@ -78,7 +80,7 @@ def _get_available_months():
     return list(months)
 
 
-def query_monthly_ranking(trans_code, order_col, month):
+def query_monthly_ranking(trans_code, order_col, month, year):
     """Top-5 companies for a given metric in one month.
 
     Groups by the issuer (reached through the submission FK) and takes
@@ -90,7 +92,7 @@ def query_monthly_ranking(trans_code, order_col, month):
         .filter(
             trans_code=trans_code,
             is_valid=True,
-            trans_date__year=config.TARGET_YEAR,
+            trans_date__year=year,
             trans_date__month=month,
         )
         .values(issuer_cik=F("submission__issuer_cik"))
@@ -153,15 +155,15 @@ def _setup_chart_style():
 # --- Monthly bar charts ---
 
 def create_bar_chart(data, month_num, metric_col, metric_label,
-                     trans_type, output_dir):
+                     trans_type, output_dir, year):
     """Horizontal bar chart for one top-5 ranking."""
     if data.empty:
         return None
 
-    month_str = f"{config.TARGET_YEAR}-{month_num:02d}"
+    month_str = f"{year}-{month_num:02d}"
     month_dir = os.path.join(output_dir, month_str)
     os.makedirs(month_dir, exist_ok=True)
-    display_month = f"{MONTH_NAMES[month_num]} {config.TARGET_YEAR}"
+    display_month = f"{MONTH_NAMES[month_num]} {year}"
 
     # "TICKER - Company Name" labels
     labels = []
@@ -233,14 +235,14 @@ def create_bar_chart(data, month_num, metric_col, metric_label,
 
 # --- Overview charts (year-level) ---
 
-def _query_monthly_totals():
-    """Aggregated P/S totals per month - used by trend + sentiment charts."""
+def _query_monthly_totals(year):
+    """Aggregated P/S totals per month for the given year - used by trend + sentiment charts."""
     rows = (
         NonderivTrans.objects
         .filter(
             is_valid=True,
             trans_code__in=["P", "S"],
-            trans_date__year=config.TARGET_YEAR,
+            trans_date__year=year,
         )
         .annotate(month_num=ExtractMonth("trans_date"))
         .values("month_num", "trans_code")
@@ -258,9 +260,9 @@ def _query_monthly_totals():
     return df
 
 
-def create_trend_chart(output_dir):
-    """Line chart comparing monthly purchase vs sale volume."""
-    df = _query_monthly_totals()
+def create_trend_chart(output_dir, year):
+    """Line chart comparing monthly purchase vs sale volume for the given year."""
+    df = _query_monthly_totals(year)
     if df.empty:
         return None
 
@@ -308,7 +310,7 @@ def create_trend_chart(output_dir):
 
     fig.text(
         0.06, 0.96,
-        f"Monthly Insider Transaction Volume  |  {config.TARGET_YEAR}",
+        f"Monthly Insider Transaction Volume  |  {year}",
         fontsize=14, fontweight="bold", color=COLOR_TEXT, va="top",
     )
     fig.text(
@@ -319,16 +321,16 @@ def create_trend_chart(output_dir):
     plt.subplots_adjust(top=0.84, left=0.10, right=0.92, bottom=0.10)
     _add_logo(fig)
 
-    filepath = os.path.join(output_dir, f"{config.TARGET_YEAR}_trend_volume.png")
+    filepath = os.path.join(output_dir, f"{year}_trend_volume.png")
     plt.savefig(filepath, dpi=200, facecolor=COLOR_BG)
     plt.close()
     logger.info(f"  Created trend chart: {filepath}")
     return filepath
 
 
-def create_sentiment_chart(output_dir):
-    """P/S ratio per month - above 1.0 means more buying than selling."""
-    df = _query_monthly_totals()
+def create_sentiment_chart(output_dir, year):
+    """P/S ratio per month for the given year - above 1.0 means more buying than selling."""
+    df = _query_monthly_totals(year)
     if df.empty:
         return None
 
@@ -376,7 +378,7 @@ def create_sentiment_chart(output_dir):
 
     fig.text(
         0.06, 0.96,
-        f"Insider Sentiment Index  |  {config.TARGET_YEAR}",
+        f"Insider Sentiment Index  |  {year}",
         fontsize=14, fontweight="bold", color=COLOR_TEXT, va="top",
     )
     fig.text(
@@ -388,28 +390,27 @@ def create_sentiment_chart(output_dir):
     plt.subplots_adjust(top=0.84, left=0.10, right=0.92, bottom=0.10)
     _add_logo(fig)
 
-    filepath = os.path.join(output_dir,
-                            f"{config.TARGET_YEAR}_sentiment_index.png")
+    filepath = os.path.join(output_dir, f"{year}_sentiment_index.png")
     plt.savefig(filepath, dpi=200, facecolor=COLOR_BG)
     plt.close()
     logger.info(f"  Created sentiment chart: {filepath}")
     return filepath
 
 
-def create_heatmap(output_dir):
-    """Heatmap of companies that keep showing up in Top-5 sales.
+def create_heatmap(output_dir, year):
+    """Heatmap of companies that keep showing up in Top-5 sales for the given year.
 
     Only shows companies present in at least 2 different months.
     Cells show rank position (#1-#5), darker = higher rank.
     """
-    months = _get_available_months()
+    months = _get_available_months(year)
     if not months:
         return None
 
     # grab top-5 sales (by volume) for each month
     all_rankings = []
     for month in months:
-        df = query_monthly_ranking("S", "total_volume", month)
+        df = query_monthly_ranking("S", "total_volume", month, year)
         if df.empty:
             continue
         df["month_num"] = month
@@ -496,7 +497,7 @@ def create_heatmap(output_dir):
 
     fig.text(
         0.06, 0.96,
-        f"Repeat Insider Sellers  |  {config.TARGET_YEAR}",
+        f"Repeat Insider Sellers  |  {year}",
         fontsize=14, fontweight="bold", color=COLOR_TEXT, va="top",
     )
     fig.text(
@@ -511,9 +512,7 @@ def create_heatmap(output_dir):
     )
     _add_logo(fig)
 
-    filepath = os.path.join(
-        output_dir, f"{config.TARGET_YEAR}_repeat_sellers_heatmap.png",
-    )
+    filepath = os.path.join(output_dir, f"{year}_repeat_sellers_heatmap.png")
     plt.savefig(filepath, dpi=200, facecolor=COLOR_BG)
     plt.close()
     logger.info(f"  Created heatmap: {filepath}")
@@ -522,12 +521,12 @@ def create_heatmap(output_dir):
 
 # --- CSV export ---
 
-def export_table(data, month_num, metric_label, trans_type, output_dir):
+def export_table(data, month_num, metric_label, trans_type, output_dir, year):
     """Dump a ranking result to CSV."""
     if data.empty:
         return None
 
-    month_str = f"{config.TARGET_YEAR}-{month_num:02d}"
+    month_str = f"{year}-{month_num:02d}"
     month_dir = os.path.join(output_dir, month_str)
     os.makedirs(month_dir, exist_ok=True)
     filename = (
@@ -541,11 +540,10 @@ def export_table(data, month_num, metric_label, trans_type, output_dir):
 
 # --- PDF report ---
 
-def generate_pdf_report(monthly_charts_dir, overview_charts_dir, output_dir):
+def generate_pdf_report(monthly_charts_dir, overview_charts_dir, output_dir, year):
     """Build a PDF with title page, stats, overview charts, and monthly charts."""
     from fpdf import FPDF
 
-    year = config.TARGET_YEAR
     pdf = FPDF(orientation="L", unit="mm", format="A4")
     pdf.set_auto_page_break(auto=True, margin=15)
 
@@ -597,7 +595,7 @@ def generate_pdf_report(monthly_charts_dir, overview_charts_dir, output_dir):
             pdf.ln(5)
 
     # monthly breakdown
-    months = _get_available_months()
+    months = _get_available_months(year)
     for month in months:
         month_str = f"{year}-{month:02d}"
         display = f"{MONTH_NAMES[month]} {year}"
@@ -614,16 +612,12 @@ def generate_pdf_report(monthly_charts_dir, overview_charts_dir, output_dir):
         for trans in ["purchases", "sales"]:
             for metric in metrics:
                 fname = f"{trans}_by_{metric}.png"
-                fpath = os.path.join(
-                    monthly_charts_dir, month_str, fname,
-                )
+                fpath = os.path.join(monthly_charts_dir, month_str, fname)
                 if os.path.isfile(fpath):
                     if pdf.get_y() > 140:
                         pdf.add_page()
                         pdf.set_font("Helvetica", "B", 18)
-                        pdf.cell(
-                            0, 12, f"{display} (continued)", ln=True,
-                        )
+                        pdf.cell(0, 12, f"{display} (continued)", ln=True)
                         pdf.ln(2)
                     pdf.image(fpath, x=10, w=270)
                     pdf.ln(3)
@@ -688,18 +682,19 @@ def _get_pipeline_stats():
 
 # --- Main orchestration ---
 
-def generate_all_evaluations():
-    """Run everything: monthly charts + CSVs, overview charts, PDF.
+def generate_evaluations_for_year(year):
+    """Run all charts, CSVs and PDF for a single year.
 
     For each month with data: 6 bar charts (3 purchase metrics,
-    3 sale metrics) plus matching CSV tables.
+    3 sale metrics) plus matching CSV tables. Then 3 overview charts
+    and one PDF report.
     """
-    os.makedirs(config.CHARTS_DIR, exist_ok=True)
-    os.makedirs(config.CHARTS_OVERVIEW_DIR, exist_ok=True)
-    os.makedirs(config.TABLES_DIR, exist_ok=True)
+    months = _get_available_months(year)
+    if not months:
+        logger.info(f"  {year}: no data found, skipping")
+        return 0, 0
 
-    months = _get_available_months()
-    logger.info(f"Generating evaluations for {len(months)} months...")
+    logger.info(f"  {year}: generating evaluations for {len(months)} month(s)...")
 
     chart_count = 0
     csv_count = 0
@@ -708,41 +703,64 @@ def generate_all_evaluations():
         for trans_code, metric_col, order_col, metric_label, file_tag in EVALUATIONS:
             trans_type = "Purchases" if trans_code == "P" else "Sales"
 
-            df = query_monthly_ranking(trans_code, order_col, month)
+            df = query_monthly_ranking(trans_code, order_col, month, year)
 
             if df.empty:
                 logger.info(
-                    f"  {config.TARGET_YEAR}-{month:02d} {trans_type}/{metric_label}: "
+                    f"  {year}-{month:02d} {trans_type}/{metric_label}: "
                     f"no data, skipping"
                 )
                 continue
 
             chart_path = create_bar_chart(
                 df, month, metric_col, metric_label,
-                trans_type, config.CHARTS_DIR
+                trans_type, config.CHARTS_DIR, year
             )
             if chart_path:
                 chart_count += 1
 
             csv_path = export_table(
-                df, month, metric_label, trans_type, config.TABLES_DIR
+                df, month, metric_label, trans_type, config.TABLES_DIR, year
             )
             if csv_path:
                 csv_count += 1
 
-        logger.info(f"  {config.TARGET_YEAR}-{month:02d}: done")
+        logger.info(f"  {year}-{month:02d}: done")
 
-    # year-level overview
-    create_trend_chart(config.CHARTS_OVERVIEW_DIR)
-    create_sentiment_chart(config.CHARTS_OVERVIEW_DIR)
-    create_heatmap(config.CHARTS_OVERVIEW_DIR)
+    create_trend_chart(config.CHARTS_OVERVIEW_DIR, year)
+    create_sentiment_chart(config.CHARTS_OVERVIEW_DIR, year)
+    create_heatmap(config.CHARTS_OVERVIEW_DIR, year)
 
     generate_pdf_report(
         config.CHARTS_DIR,
-        config.CHARTS_OVERVIEW_DIR, config.OUTPUT_DIR,
+        config.CHARTS_OVERVIEW_DIR, config.OUTPUT_DIR, year
     )
 
+    return chart_count, csv_count
+
+
+def generate_all_evaluations(years=None):
+    """Run evaluations for all configured years (or a custom list).
+
+    Iterates over TARGET_YEARS from config unless a specific list is passed.
+    Each year gets its own charts, CSVs, and PDF report.
+    """
+    os.makedirs(config.CHARTS_DIR, exist_ok=True)
+    os.makedirs(config.CHARTS_OVERVIEW_DIR, exist_ok=True)
+    os.makedirs(config.TABLES_DIR, exist_ok=True)
+
+    target = years if years is not None else config.TARGET_YEARS
+    logger.info(f"Generating evaluations for years: {list(target)}")
+
+    total_charts = 0
+    total_csvs = 0
+
+    for year in target:
+        charts, csvs = generate_evaluations_for_year(year)
+        total_charts += charts + 3  # +3 for overview charts
+        total_csvs += csvs
+
     logger.info(
-        f"Evaluation complete: {chart_count + 3} charts, {csv_count} CSVs "
-        f"for {len(months)} months"
+        f"Evaluation complete: {total_charts} charts, {total_csvs} CSVs "
+        f"across {len(list(target))} year(s)"
     )

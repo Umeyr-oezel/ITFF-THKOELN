@@ -199,44 +199,44 @@ Alle hartcodierten Werte sollen ueber `config.py` oder `.env` konfigurierbar sei
 Statt nur 2025 sollen die Jahre 2020 bis 2025 abgedeckt werden.
 
 ### 5.1 config.py anpassen
-- [ ] `TARGET_YEAR = 2025` ersetzen durch `TARGET_YEARS = range(2020, 2026)` (oder Liste)
-- [ ] Alternativ: `START_YEAR` und `END_YEAR` in `.env`
+- [x] `TARGET_YEAR = 2025` ersetzen durch `TARGET_YEARS = range(2020, 2026)` (oder Liste)
+- [x] Alternativ: `START_YEAR` und `END_YEAR` in `.env`
 
 ### 5.2 downloader.py anpassen
-- [ ] `get_available_quarters()` muss fuer mehrere Jahre scrapen
-- [ ] Download-Logik muss ueber alle Jahre iterieren
-- [ ] Bereits heruntergeladene Dateien ueberspringen (existiert schon)
+- [x] `get_available_quarters()` muss fuer mehrere Jahre scrapen
+- [x] Download-Logik muss ueber alle Jahre iterieren
+- [x] Bereits heruntergeladene Dateien ueberspringen (existiert schon)
 
 ### 5.3 parser.py anpassen
-- [ ] ZIP-Extraktion muss mit mehreren Jahren umgehen
-- [ ] Ordnerstruktur: `data/extracted/2020Q1/`, `data/extracted/2021Q2/`, etc.
+- [x] ZIP-Extraktion muss mit mehreren Jahren umgehen
+- [x] Ordnerstruktur: `data/extracted/2020Q1/`, `data/extracted/2021Q2/`, etc.
 
 ### 5.4 data_preparation.py anpassen
-- [ ] `prepare_all_data()` muss alle Jahre verarbeiten
-- [ ] Keine Aenderungen an der Transformationslogik noetig
+- [x] `prepare_all_data()` muss alle Jahre verarbeiten
+- [x] Keine Aenderungen an der Transformationslogik noetig
 
 ### 5.5 db_manager.py anpassen
-- [ ] Import muss fuer alle Quartale funktionieren
-- [ ] Idempotenz pro Quartal bleibt bestehen
-- [ ] Pipeline-Log wird weiterhin nie geloescht
+- [x] Import muss fuer alle Quartale funktionieren
+- [x] Idempotenz pro Quartal bleibt bestehen
+- [x] Pipeline-Log wird weiterhin nie geloescht
 
 ### 5.6 evaluation.py anpassen
-- [ ] Charts und Tabellen fuer jedes Jahr einzeln generieren
-- [ ] Oder: jahresuebergreifende Auswertungen ermoelichen
-- [ ] `MONTH_NAMES` und Ordnerstruktur muessen mehrjaehrig funktionieren
-- [ ] PDF-Report: entweder pro Jahr oder als Gesamtreport
-- [ ] Ueberblick-Charts (Trend, Sentiment, Heatmap) pro Jahr
+- [x] Charts und Tabellen fuer jedes Jahr einzeln generieren
+- [x] Oder: jahresuebergreifende Auswertungen ermoelichen
+- [x] `MONTH_NAMES` und Ordnerstruktur muessen mehrjaehrig funktionieren
+- [x] PDF-Report: entweder pro Jahr oder als Gesamtreport
+- [x] Ueberblick-Charts (Trend, Sentiment, Heatmap) pro Jahr
 
 ### 5.7 main.py anpassen
-- [ ] CLI-Parameter: `--years 2020-2025` oder `--year 2023`
-- [ ] Default: alle konfigurierten Jahre
+- [x] CLI-Parameter: `--years 2020-2025` oder `--year 2023`
+- [x] Default: alle konfigurierten Jahre
 
 ### 5.8 Testen
 - [ ] Download fuer 2020 bis 2025 funktioniert
 - [ ] Datenimport fuer alle Jahre laeuft fehlerfrei
 - [ ] Validierung funktioniert ueber alle Jahre
 - [ ] Evaluation generiert korrekte Charts pro Jahr
-- [ ] Unter `/docs` dokumentieren: `multi_year_extension.md`
+- [x] Unter `/docs` dokumentieren: `multi_year_extension.md`
 
 ---
 

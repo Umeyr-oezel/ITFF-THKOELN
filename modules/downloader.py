@@ -16,9 +16,9 @@ logger = logging.getLogger(__name__)
 
 
 def get_available_quarters():
-    """Scrape the SEC page to find which quarters have data.
+    """Scrape the SEC page to find which quarters have data for all TARGET_YEARS.
 
-    Returns list of (quarter_label, download_url) tuples.
+    Returns list of (quarter_label, download_url) tuples across all configured years.
     No hardcoding - discovers dynamically what's online.
     """
     headers = {"User-Agent": config.USER_AGENT}
@@ -28,15 +28,19 @@ def get_available_quarters():
     soup = BeautifulSoup(resp.text, "html.parser")
     quarters = []
 
+    years_pattern = "|".join(str(y) for y in config.TARGET_YEARS)
+
     for link in soup.find_all("a", href=True):
         href = link["href"]
 
-        # looking for links like "2025q1_form345.zip"
+        # looking for links like "2025q1_form345.zip" across all target years
         match = re.search(
-            rf"({config.TARGET_YEAR}q(\d))_form345\.zip", href, re.IGNORECASE
+            rf"(({years_pattern})q(\d))_form345\.zip", href, re.IGNORECASE
         )
         if match:
-            quarter_label = f"{config.TARGET_YEAR}Q{match.group(2)}"
+            year = match.group(2)
+            quarter_num = match.group(3)
+            quarter_label = f"{year}Q{quarter_num}"
             if href.startswith("/"):
                 full_url = f"https://www.sec.gov{href}"
             else:
@@ -45,7 +49,7 @@ def get_available_quarters():
             logger.info(f"Found: {quarter_label} -> {full_url}")
 
     if not quarters:
-        logger.warning(f"No quarters found for year {config.TARGET_YEAR}")
+        logger.warning(f"No quarters found for years {config.TARGET_YEARS}")
 
     return sorted(quarters, key=lambda x: x[0])
 
@@ -106,17 +110,22 @@ def list_existing_quarters():
     """Find already-downloaded ZIPs without hitting SEC.
 
     Useful with --skip-download so we don't need internet access.
+    Scans for all TARGET_YEARS, not just one.
     """
     results = []
     if not os.path.isdir(config.RAW_DIR):
         return results
 
+    years_pattern = "|".join(str(y) for y in config.TARGET_YEARS)
+
     for fname in sorted(os.listdir(config.RAW_DIR)):
         match = re.match(
-            rf"({config.TARGET_YEAR}q(\d))_form345\.zip", fname, re.IGNORECASE
+            rf"(({years_pattern})q(\d))_form345\.zip", fname, re.IGNORECASE
         )
         if match:
-            label = f"{config.TARGET_YEAR}Q{match.group(2)}"
+            year = match.group(2)
+            quarter_num = match.group(3)
+            label = f"{year}Q{quarter_num}"
             results.append((label, os.path.join(config.RAW_DIR, fname)))
             logger.info(f"Found existing: {label}")
 

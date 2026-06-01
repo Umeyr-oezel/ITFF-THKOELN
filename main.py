@@ -46,7 +46,32 @@ def parse_args():
         "--only-evaluate", action="store_true",
         help="jump straight to validation + evaluation (phases 5-6)"
     )
+    p.add_argument(
+        "--year", type=int, metavar="YEAR",
+        help="run pipeline for a single year, e.g. --year 2023"
+    )
+    p.add_argument(
+        "--years", type=str, metavar="RANGE",
+        help="run pipeline for a year range, e.g. --years 2020-2023"
+    )
     return p.parse_args()
+
+
+def resolve_years(args):
+    """Turn --year / --years CLI args into a list of integers.
+
+    Falls back to config.TARGET_YEARS when neither flag is given.
+    """
+    if args.year:
+        return [args.year]
+    if args.years:
+        parts = args.years.split("-")
+        if len(parts) == 2:
+            start, end = int(parts[0]), int(parts[1])
+            return list(range(start, end + 1))
+        # single value passed as string
+        return [int(args.years)]
+    return list(config.TARGET_YEARS)
 
 
 def preflight_checks(skip_sec=False):
@@ -145,6 +170,9 @@ def main():
     setup_logging()
     setup_directories()
 
+    years = resolve_years(args)
+    logging.info(f"Target years: {years}")
+
     start = time.time()
     logging.info("=== Pipeline started ===")
 
@@ -154,7 +182,7 @@ def main():
     if args.only_evaluate:
         logging.info("--only-evaluate: jumping to phases 5+6")
         validation.run_validation()
-        evaluation.generate_all_evaluations()
+        evaluation.generate_all_evaluations(years=years)
         elapsed = time.time() - start
         logging.info(f"=== Pipeline finished in {elapsed:.1f}s ===")
         return
@@ -182,7 +210,7 @@ def main():
     validation.run_validation()
 
     # phase 6 - charts, CSVs, PDF
-    evaluation.generate_all_evaluations()
+    evaluation.generate_all_evaluations(years=years)
 
     elapsed = time.time() - start
     print_summary(prepared, elapsed)

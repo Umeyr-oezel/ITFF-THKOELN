@@ -5,6 +5,7 @@ Database credentials live in .env and are read by Django in
 secpipeline/settings.py. Everything here is non-sensitive pipeline
 configuration: the SEC URL, file paths, and batch/timing settings.
 """
+import os
 
 # where we scrape available quarters from
 SEC_BASE_URL = "https://www.sec.gov/data-research/sec-markets-data/insider-transactions-data-sets"
@@ -21,7 +22,9 @@ TABLES_DIR = "output/tables/monthly/"
 LOG_FILE = "logs/pipeline.log"
 
 # pipeline settings
-TARGET_YEAR = 2025
+START_YEAR = int(os.getenv("START_YEAR", 2020))
+END_YEAR = int(os.getenv("END_YEAR", 2025))
+TARGET_YEARS = list(range(START_YEAR, END_YEAR + 1))
 BATCH_SIZE = 5000
 REQUEST_DELAY = 0.2   # SEC asks for at least 100ms between requests
 CREATED_BY = "group01"
