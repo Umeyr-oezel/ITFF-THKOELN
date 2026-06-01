@@ -1,6 +1,6 @@
 # SEC Form 4 Data Pipeline
 
-Automated pipeline that downloads, processes, and analyzes SEC Form 4 insider transaction data for the year 2025.
+Automated pipeline that downloads, processes, and analyzes SEC Form 4 insider transaction data for the years 2020–2025.
 
 Built for the IT for Finance course (Group 01).
 
@@ -28,14 +28,16 @@ The database layer uses the **Django ORM with PostgreSQL**. Django is used purel
 
 5. Run the pipeline:
    ```
-   python main.py
+   python main.py                    # all years (2020-2025)
+   python main.py --year 2024        # single year
+   python main.py --years 2022-2024  # year range
    ```
 
 The pipeline handles everything automatically - downloading the data from SEC, parsing, cleaning, importing into PostgreSQL, running validation checks, and generating the evaluation charts + PDF report.
 
 ## What it does
 
-- Downloads all available 2025 quarterly ZIP files from the SEC website
+- Downloads all available quarterly ZIP files from the SEC website (2020–2025 by default, configurable via `START_YEAR`/`END_YEAR` in `.env`)
 - Parses the TSV files and prepares them for the database
 - Imports everything through the Django ORM (idempotent - safe to re-run)
 - Validates transactions (mandatory field checks, price/quantity checks, date logic, etc.)
@@ -47,7 +49,7 @@ After running, you'll find:
 - `output/charts/monthly/` - bar charts per month (purchases + sales, 3 metrics each)
 - `output/charts/overview/` - trend, sentiment, and heatmap charts
 - `output/tables/monthly/` - CSV exports of the ranking data
-- `output/2025_evaluation_report.pdf` - full report with all charts
+- `output/YYYY_evaluation_report.pdf` - full report per year with all charts
 - `logs/pipeline.log` - detailed log of the pipeline run
 
 ## Project structure
@@ -82,5 +84,6 @@ docs/                  Documentation for each major task (German)
 - **Task 1 (Setup):** done, except entering the real PostgreSQL credentials (placeholders in `.env` for now).
 - **Task 2 (Django migration):** the full code migration from SQLAlchemy/MySQL to Django ORM/PostgreSQL is complete and passes all offline checks (`manage.py check`, `makemigrations`, imports). The remaining step is the end-to-end run against a real PostgreSQL database (`migrate` + full pipeline + validation/charts), which is blocked until the credentials are available. See `docs/django_migration.md`.
 - **Task 3 (Docstrings):** done. See `docs/docstring_guidelines.md`.
-
-Other tasks (flexible config, multi-year history, code review) are handled by the other team / scheduled for later - see `Plan.md`.
+- **Task 4 (Flexible config):** done. All hardcoded values moved to `config.py` or `.env`. See `docs/configuration.md`.
+- **Task 5 (Multi-year history):** done. Pipeline now covers 2020–2025 by default. CLI flags `--year` and `--years` added. See `docs/multi_year_extension.md`.
+- **Task 6 (Code review):** scheduled — see `Plan.md`.
