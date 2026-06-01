@@ -19,13 +19,8 @@ import config
 
 logger = logging.getLogger(__name__)
 
-# all known SEC Form 4 transaction codes
-KNOWN_TRANS_CODES = {
-    "P", "S", "A", "M", "F", "G", "J", "D", "C",
-    "L", "U", "X", "I", "W", "Z", "O", "E", "K", "H",
-}
-
-MAX_REASONABLE_PRICE = 1_000_000
+KNOWN_TRANS_CODES = config.KNOWN_TRANS_CODES
+MAX_REASONABLE_PRICE = config.MAX_REASONABLE_PRICE
 
 
 # --- Individual checks ---

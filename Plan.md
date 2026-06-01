@@ -173,24 +173,24 @@ Alle hartcodierten Werte sollen ueber `config.py` oder `.env` konfigurierbar sei
 
 ### 4.1 Identifizierte Hardcoded-Stellen
 
-- [ ] `config.py:12` - `USER_AGENT` String → in `.env` auslagern
-- [ ] `config.py:22` - `SCHEMA_NAME = "group01"` → in `.env` auslagern (wird nach Django-Umstellung evtl. obsolet)
-- [ ] `config.py:34` - `TARGET_YEAR = 2025` → wird in Aufgabe 5 zu `TARGET_YEARS` umgebaut
-- [ ] `config.py:36` - `REQUEST_DELAY = 0.2` → in `.env` auslagern
-- [ ] `config.py:37` - `CREATED_BY = "group01"` → in `.env` auslagern
-- [ ] `evaluation.py:46-51` - Farbwerte (`COLOR_PURCHASE`, etc.) → in `config.py` als Dictionary
-- [ ] `evaluation.py:54-55` - `LOGO_PATH` → in `config.py`
-- [ ] `evaluation.py:191` - `MONTH_NAMES` Dictionary → pruefen ob `calendar` Modul besser waere
-- [ ] `db_manager.py:195` - `"SET innodb_lock_wait_timeout = 120"` → in `config.py` (entfaellt bei PostgreSQL)
-- [ ] `validation.py:14-17` - `KNOWN_TRANS_CODES` Set → in `config.py`
-- [ ] `validation.py:19` - `MAX_REASONABLE_PRICE = 1_000_000` → in `config.py`
-- [ ] `downloader.py:46` - `max_retries=3` Default → in `config.py`
+- [x] `config.py` - `USER_AGENT` String → in `.env` auslagern
+- [x] `config.py` - `SCHEMA_NAME = "group01"` → entfaellt durch Django-Umstellung (Team 1)
+- [x] `config.py` - `TARGET_YEAR = 2025` → in Aufgabe 5 erledigt (START_YEAR/END_YEAR)
+- [x] `config.py` - `REQUEST_DELAY = 0.2` → in `.env` auslagern
+- [x] `config.py` - `CREATED_BY = "group01"` → in `.env` auslagern
+- [x] `evaluation.py` - Farbwerte (`COLOR_PURCHASE`, etc.) → `config.CHART_COLORS` Dictionary
+- [x] `evaluation.py` - `LOGO_PATH` → `config.LOGO_PATH`
+- [x] `evaluation.py` - `MONTH_NAMES` Dictionary → `config.MONTH_NAMES` (dict beibehalten, calendar-Modul bringt keinen Mehrwert)
+- [x] `db_manager.py` - `innodb_lock_wait_timeout` → entfaellt durch Django/PostgreSQL-Umstellung (Team 1)
+- [x] `validation.py` - `KNOWN_TRANS_CODES` Set → `config.KNOWN_TRANS_CODES`
+- [x] `validation.py` - `MAX_REASONABLE_PRICE` → `config.MAX_REASONABLE_PRICE`
+- [x] `downloader.py` - `max_retries=3` Default → `config.MAX_RETRIES`
 
 ### 4.2 Umsetzung
-- [ ] Alle identifizierten Werte nach `config.py` oder `.env` verschieben
-- [ ] `.env.example` aktualisieren mit allen neuen Variablen
-- [ ] Bestehende Funktionalitaet darf sich nicht aendern
-- [ ] Unter `/docs` dokumentieren: `configuration.md`
+- [x] Alle identifizierten Werte nach `config.py` oder `.env` verschoben
+- [x] `.env.example` aktualisiert mit allen neuen Variablen
+- [x] Bestehende Funktionalitaet unveraendert
+- [x] Unter `/docs` dokumentieren: `configuration.md`
 
 ---
 

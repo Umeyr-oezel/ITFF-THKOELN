@@ -60,12 +60,14 @@ def is_already_downloaded(filename):
     return os.path.isfile(path)
 
 
-def download_quarter(url, filename, max_retries=3):
+def download_quarter(url, filename, max_retries=None):
     """Download one ZIP from SEC, with retry on server errors.
 
     Streams the response so large files don't blow up memory.
     Backs off exponentially on 429/500/503.
     """
+    if max_retries is None:
+        max_retries = config.MAX_RETRIES
     filepath = os.path.join(config.RAW_DIR, filename)
     headers = {"User-Agent": config.USER_AGENT}
 

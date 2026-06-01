@@ -29,16 +29,14 @@ import config  # noqa: E402
 logger = logging.getLogger(__name__)
 
 # chart color scheme
-COLOR_PURCHASE = "#1a6b54"
-COLOR_SALE = "#8b2f3a"
-COLOR_BG = "#fafafa"
-COLOR_TEXT = "#2d2d2d"
-COLOR_GRID = "#e0e0e0"
-COLOR_SUBTITLE = "#666666"
+COLOR_PURCHASE = config.CHART_COLORS["purchase"]
+COLOR_SALE     = config.CHART_COLORS["sale"]
+COLOR_BG       = config.CHART_COLORS["bg"]
+COLOR_TEXT     = config.CHART_COLORS["text"]
+COLOR_GRID     = config.CHART_COLORS["grid"]
+COLOR_SUBTITLE = config.CHART_COLORS["subtitle"]
 
-# TH Köln logo for branding
-LOGO_PATH = os.path.join(os.path.dirname(__file__), os.pardir,
-                         "assets", "th_koeln_logo.png")
+LOGO_PATH = config.LOGO_PATH
 
 # each tuple: (trans_code, metric_col, order_col, label, file_tag)
 EVALUATIONS = [
@@ -54,11 +52,7 @@ EVALUATIONS = [
     ("S", "total_volume", "total_volume", "USD Nominal Volume", "sales_by_volume"),
 ]
 
-MONTH_NAMES = {
-    1: "January", 2: "February", 3: "March", 4: "April",
-    5: "May", 6: "June", 7: "July", 8: "August",
-    9: "September", 10: "October", 11: "November", 12: "December",
-}
+MONTH_NAMES = config.MONTH_NAMES
 
 
 # --- DB queries ---
