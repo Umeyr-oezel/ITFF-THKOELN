@@ -136,7 +136,7 @@ def list_existing_quarters():
 
 
 def download_all_quarters():
-    """Download all quarters for TARGET_YEAR. Skips existing files.
+    """Download all quarters for TARGET_YEARS. Skips existing files.
 
     Returns list of (quarter_label, zip_path) tuples.
     """

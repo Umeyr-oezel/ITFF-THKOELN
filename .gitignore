@@ -1,8 +1,7 @@
 .env
 data/
+logs/
 __pycache__/
 *.pyc
-../wird gelöscht/logs/
 venv/
 .idea/
-.env
