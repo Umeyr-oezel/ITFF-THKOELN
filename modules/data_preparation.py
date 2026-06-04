@@ -97,11 +97,11 @@ def prepare_submissions(sub_df, owner_df, quarter):
 
 def prepare_transactions(df, quarter, table_name="nonderiv_trans"):
     """Clean transaction data - works for both nonderiv and deriv tables."""
-    trans = _clean_columns(df)
-
-    if trans.empty:
+    if df.empty:
         logger.info(f"{table_name}: empty, skipping")
-        return trans
+        return df
+
+    trans = _clean_columns(df)
 
     trans["trans_date"] = _parse_date(trans["trans_date"])
 
@@ -137,11 +137,11 @@ def prepare_transactions(df, quarter, table_name="nonderiv_trans"):
 
 def prepare_holdings(df, quarter, table_name="nonderiv_holdings"):
     """Clean holdings data. Pretty simple since there's only one relevant column."""
-    hold = _clean_columns(df)
-
-    if hold.empty:
+    if df.empty:
         logger.info(f"{table_name}: empty, skipping")
-        return hold
+        return df
+
+    hold = _clean_columns(df)
 
     if "shrs_ownd_folwng_trans" in hold.columns:
         hold["shrs_ownd_folwng_trans"] = pd.to_numeric(

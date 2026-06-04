@@ -16,10 +16,9 @@ DATA_DIR = "data/"
 RAW_DIR = "data/raw/"
 EXTRACTED_DIR = "data/extracted/"
 OUTPUT_DIR = "output/"
-CHARTS_DIR = "output/charts/monthly/"
-CHARTS_OVERVIEW_DIR = "output/charts/overview/"
-TABLES_DIR = "output/tables/monthly/"
 LOG_FILE = "logs/pipeline.log"
+# The per-year output paths (charts, tables, report) are built by the
+# helper functions at the bottom of this file.
 
 # pipeline settings
 START_YEAR = int(os.getenv("START_YEAR", 2020))
@@ -52,3 +51,31 @@ MONTH_NAMES = {
     5: "May",     6: "June",     7: "July",      8: "August",
     9: "September", 10: "October", 11: "November", 12: "December",
 }
+
+
+# Per-year output layout. Everything a year produces lives under
+# output/<year>/, which keeps the multi-year output tidy instead of
+# mixing every year into shared monthly/overview folders.
+def year_output_dir(year):
+    """Base output folder for one year: output/<year>/."""
+    return os.path.join(OUTPUT_DIR, str(year))
+
+
+def charts_monthly_dir(year):
+    """Folder for the monthly Top-5/Bottom-5 bar charts of one year."""
+    return os.path.join(year_output_dir(year), "charts", "monthly")
+
+
+def charts_overview_dir(year):
+    """Folder for the year-level overview charts (trend, sentiment, heatmap)."""
+    return os.path.join(year_output_dir(year), "charts", "overview")
+
+
+def tables_monthly_dir(year):
+    """Folder for the monthly CSV exports of one year."""
+    return os.path.join(year_output_dir(year), "tables", "monthly")
+
+
+def report_path(year):
+    """Full path of the annual PDF report for one year."""
+    return os.path.join(year_output_dir(year), f"{year}_evaluation_report.pdf")

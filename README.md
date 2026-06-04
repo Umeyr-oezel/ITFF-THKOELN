@@ -21,6 +21,11 @@ The database layer uses the **Django ORM with PostgreSQL**. Django is used purel
    ```
    Then edit `.env` with your actual DB name, host, port, user, and password.
 
+   No PostgreSQL server yet? There is a local SQLite fallback - set
+   `DB_ENGINE=django.db.backends.sqlite3` and `DB_NAME=local.sqlite3` in
+   `.env` and everything below works against a single local file (no
+   server, no credentials). See `docs/sqlite_fallback_und_tests.md`.
+
 4. Create the database schema (runs the Django migrations):
    ```
    python manage.py migrate
@@ -45,11 +50,11 @@ The pipeline handles everything automatically - downloading the data from SEC, p
 
 ## Output
 
-After running, you'll find:
-- `output/charts/monthly/` - bar charts per month (purchases + sales, 3 metrics each)
-- `output/charts/overview/` - trend, sentiment, and heatmap charts
-- `output/tables/monthly/` - CSV exports of the ranking data
-- `output/YYYY_evaluation_report.pdf` - full report per year with all charts
+After running, the output is grouped per year under `output/<year>/`:
+- `output/<year>/<year>_evaluation_report.pdf` - full report for that year
+- `output/<year>/charts/monthly/<MM>/` - bar charts per month (purchases + sales, 3 metrics each)
+- `output/<year>/charts/overview/` - trend, sentiment, and heatmap charts
+- `output/<year>/tables/monthly/<MM>/` - CSV exports of the ranking data
 - `logs/pipeline.log` - detailed log of the pipeline run
 
 ## Project structure
@@ -78,6 +83,21 @@ docs/                  Documentation for each major task (German)
 - The pipeline needs a PostgreSQL server. Connection details go in `.env`, never in the code.
 - First run downloads ~80 MB of ZIP files from SEC. Subsequent runs skip existing files.
 - Re-running the pipeline deletes and re-imports all data (delete-then-insert), so the database always reflects the latest processing. The `pipeline_log` table is never deleted to keep a full audit trail.
+
+## Testing
+
+The pipeline ships with a unit-test suite (Django's built-in test runner -
+no extra package). Tests run against a throwaway SQLite database, so they
+need neither the PostgreSQL server nor internet access:
+
+```
+python manage.py test
+```
+
+Make sure the SQLite fallback is active in `.env` (see setup step 3). The
+suite covers data preparation, all eight validation checks, the parser,
+the downloader (network mocked), and the idempotent import. See
+`docs/sqlite_fallback_und_tests.md`.
 
 ## Current status
 

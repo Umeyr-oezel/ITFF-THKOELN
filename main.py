@@ -82,13 +82,18 @@ def preflight_checks(skip_sec=False):
     issues = []
 
     db = settings.DATABASES["default"]
-    if not db.get("USER"):
-        issues.append(
-            "DB_USER is empty - did you create a .env file? "
-            "(copy .env.example and fill in your credentials)"
-        )
-    if not db.get("PASSWORD"):
-        issues.append("DB_PASSWORD is empty - check your .env file")
+    is_sqlite = db["ENGINE"].endswith("sqlite3")
+
+    # SQLite is just a local file - it has no user/password to check.
+    # Only the PostgreSQL path needs credentials from .env.
+    if not is_sqlite:
+        if not db.get("USER"):
+            issues.append(
+                "DB_USER is empty - did you create a .env file? "
+                "(copy .env.example and fill in your credentials)"
+            )
+        if not db.get("PASSWORD"):
+            issues.append("DB_PASSWORD is empty - check your .env file")
 
     # try the DB connection
     if not issues:
@@ -97,7 +102,7 @@ def preflight_checks(skip_sec=False):
             connection.ensure_connection()
             logging.info("Pre-flight: DB connection OK")
         except Exception as e:
-            issues.append(f"Cannot connect to PostgreSQL: {e}")
+            issues.append(f"Cannot connect to the database: {e}")
 
     # SEC reachable? (skip when we only need DB data)
     if not skip_sec:
@@ -147,14 +152,14 @@ def print_summary(prepared, elapsed):
     logging.info(f"  Quarters:    {len(prepared)}")
     logging.info(f"  Duration:    {elapsed:.1f}s")
 
-    # count generated output files
+    # count generated output files (charts + tables across all year folders)
     chart_count = sum(
-        len(files) for _, _, files in os.walk(config.CHARTS_DIR)
-    ) + sum(
-        len(files) for _, _, files in os.walk(config.CHARTS_OVERVIEW_DIR)
+        sum(1 for f in files if f.endswith(".png"))
+        for _, _, files in os.walk(config.OUTPUT_DIR)
     )
     csv_count = sum(
-        len(files) for _, _, files in os.walk(config.TABLES_DIR)
+        sum(1 for f in files if f.endswith(".csv"))
+        for _, _, files in os.walk(config.OUTPUT_DIR)
     )
     logging.info(f"  Charts:      {chart_count}")
     logging.info(f"  CSV tables:  {csv_count}")
@@ -234,8 +239,7 @@ def setup_directories():
     """Make sure all output folders exist before we start writing."""
     dirs = [
         config.RAW_DIR, config.EXTRACTED_DIR,
-        config.CHARTS_DIR, config.CHARTS_OVERVIEW_DIR,
-        config.TABLES_DIR, os.path.dirname(config.LOG_FILE),
+        config.OUTPUT_DIR, os.path.dirname(config.LOG_FILE),
     ]
     for d in dirs:
         os.makedirs(d, exist_ok=True)

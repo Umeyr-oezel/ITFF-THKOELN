@@ -154,7 +154,7 @@ def create_bar_chart(data, month_num, metric_col, metric_label,
     if data.empty:
         return None
 
-    month_str = f"{year}-{month_num:02d}"
+    month_str = f"{month_num:02d}"
     month_dir = os.path.join(output_dir, month_str)
     os.makedirs(month_dir, exist_ok=True)
     display_month = f"{MONTH_NAMES[month_num]} {year}"
@@ -315,7 +315,7 @@ def create_trend_chart(output_dir, year):
     plt.subplots_adjust(top=0.84, left=0.10, right=0.92, bottom=0.10)
     _add_logo(fig)
 
-    filepath = os.path.join(output_dir, f"{year}_trend_volume.png")
+    filepath = os.path.join(output_dir, "trend_volume.png")
     plt.savefig(filepath, dpi=200, facecolor=COLOR_BG)
     plt.close()
     logger.info(f"  Created trend chart: {filepath}")
@@ -384,7 +384,7 @@ def create_sentiment_chart(output_dir, year):
     plt.subplots_adjust(top=0.84, left=0.10, right=0.92, bottom=0.10)
     _add_logo(fig)
 
-    filepath = os.path.join(output_dir, f"{year}_sentiment_index.png")
+    filepath = os.path.join(output_dir, "sentiment_index.png")
     plt.savefig(filepath, dpi=200, facecolor=COLOR_BG)
     plt.close()
     logger.info(f"  Created sentiment chart: {filepath}")
@@ -506,7 +506,7 @@ def create_heatmap(output_dir, year):
     )
     _add_logo(fig)
 
-    filepath = os.path.join(output_dir, f"{year}_repeat_sellers_heatmap.png")
+    filepath = os.path.join(output_dir, "repeat_sellers_heatmap.png")
     plt.savefig(filepath, dpi=200, facecolor=COLOR_BG)
     plt.close()
     logger.info(f"  Created heatmap: {filepath}")
@@ -520,7 +520,7 @@ def export_table(data, month_num, metric_label, trans_type, output_dir, year):
     if data.empty:
         return None
 
-    month_str = f"{year}-{month_num:02d}"
+    month_str = f"{month_num:02d}"
     month_dir = os.path.join(output_dir, month_str)
     os.makedirs(month_dir, exist_ok=True)
     filename = (
@@ -534,7 +534,7 @@ def export_table(data, month_num, metric_label, trans_type, output_dir, year):
 
 # --- PDF report ---
 
-def generate_pdf_report(monthly_charts_dir, overview_charts_dir, output_dir, year):
+def generate_pdf_report(monthly_charts_dir, overview_charts_dir, pdf_path, year):
     """Build a PDF with title page, stats, overview charts, and monthly charts."""
     from fpdf import FPDF
 
@@ -578,9 +578,9 @@ def generate_pdf_report(monthly_charts_dir, overview_charts_dir, output_dir, yea
     pdf.ln(3)
 
     overview_files = [
-        f"{year}_trend_volume.png",
-        f"{year}_sentiment_index.png",
-        f"{year}_repeat_sellers_heatmap.png",
+        "trend_volume.png",
+        "sentiment_index.png",
+        "repeat_sellers_heatmap.png",
     ]
     for fname in overview_files:
         fpath = os.path.join(overview_charts_dir, fname)
@@ -591,7 +591,7 @@ def generate_pdf_report(monthly_charts_dir, overview_charts_dir, output_dir, yea
     # monthly breakdown
     months = _get_available_months(year)
     for month in months:
-        month_str = f"{year}-{month:02d}"
+        month_str = f"{month:02d}"
         display = f"{MONTH_NAMES[month]} {year}"
 
         pdf.add_page()
@@ -616,7 +616,6 @@ def generate_pdf_report(monthly_charts_dir, overview_charts_dir, output_dir, yea
                     pdf.image(fpath, x=10, w=270)
                     pdf.ln(3)
 
-    pdf_path = os.path.join(output_dir, f"{year}_evaluation_report.pdf")
     pdf.output(pdf_path)
     logger.info(f"  Created PDF report: {pdf_path}")
     return pdf_path
@@ -690,6 +689,12 @@ def generate_evaluations_for_year(year):
 
     logger.info(f"  {year}: generating evaluations for {len(months)} month(s)...")
 
+    monthly_charts_dir = config.charts_monthly_dir(year)
+    overview_charts_dir = config.charts_overview_dir(year)
+    tables_dir = config.tables_monthly_dir(year)
+    for d in (monthly_charts_dir, overview_charts_dir, tables_dir):
+        os.makedirs(d, exist_ok=True)
+
     chart_count = 0
     csv_count = 0
 
@@ -708,26 +713,26 @@ def generate_evaluations_for_year(year):
 
             chart_path = create_bar_chart(
                 df, month, metric_col, metric_label,
-                trans_type, config.CHARTS_DIR, year
+                trans_type, monthly_charts_dir, year
             )
             if chart_path:
                 chart_count += 1
 
             csv_path = export_table(
-                df, month, metric_label, trans_type, config.TABLES_DIR, year
+                df, month, metric_label, trans_type, tables_dir, year
             )
             if csv_path:
                 csv_count += 1
 
         logger.info(f"  {year}-{month:02d}: done")
 
-    create_trend_chart(config.CHARTS_OVERVIEW_DIR, year)
-    create_sentiment_chart(config.CHARTS_OVERVIEW_DIR, year)
-    create_heatmap(config.CHARTS_OVERVIEW_DIR, year)
+    create_trend_chart(overview_charts_dir, year)
+    create_sentiment_chart(overview_charts_dir, year)
+    create_heatmap(overview_charts_dir, year)
 
     generate_pdf_report(
-        config.CHARTS_DIR,
-        config.CHARTS_OVERVIEW_DIR, config.OUTPUT_DIR, year
+        monthly_charts_dir, overview_charts_dir,
+        config.report_path(year), year
     )
 
     return chart_count, csv_count
@@ -739,9 +744,7 @@ def generate_all_evaluations(years=None):
     Iterates over TARGET_YEARS from config unless a specific list is passed.
     Each year gets its own charts, CSVs, and PDF report.
     """
-    os.makedirs(config.CHARTS_DIR, exist_ok=True)
-    os.makedirs(config.CHARTS_OVERVIEW_DIR, exist_ok=True)
-    os.makedirs(config.TABLES_DIR, exist_ok=True)
+    os.makedirs(config.OUTPUT_DIR, exist_ok=True)
 
     target = years if years is not None else config.TARGET_YEARS
     logger.info(f"Generating evaluations for years: {list(target)}")

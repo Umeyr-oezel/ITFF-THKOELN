@@ -1,0 +1,6 @@
+issuer_cik,issuer_name,issuer_ticker,total_shares,num_transactions,total_volume
+1652044,Alphabet Inc.,GOOG,172014.0,507,445223258.5
+1318605,"Tesla, Inc.",TSLA,9655500.0,252,8528360222.87
+1108524,"Salesforce, Inc.",CRM,83393.0,129,15995518.24
+1441816,"MongoDB, Inc.",MDB,90618.0,106,39576608.49
+1477333,"Cloudflare, Inc.",NET,323454.0,72,38100804.13

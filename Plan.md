@@ -27,9 +27,10 @@ Grundlegende Einrichtung bevor es losgeht.
   - Zugangsdaten werden **lokal in `.env` gespeichert**, niemals auf GitHub
   - `.env` ist in `.gitignore` eingetragen
   - Aktuell Platzhalter in `.env` (siehe Abschnitt 2.8), echte Werte folgen mit PostgreSQL-Zugang
-- [ ] Pipeline einmal lokal testen (`python main.py --skip-download`)
-  - Blockiert bis PostgreSQL-Zugangsdaten vorliegen (Preflight-Check braucht erreichbare DB)
-  - Fix: `modules/__init__.py` war leer, exportiert jetzt wieder `get_engine` (Imports laufen, CLI laeuft)
+- [x] Pipeline einmal lokal testen (`python main.py`)
+  <!-- Erledigt 04.06.2026 ueber den SQLite-Fallback: kompletter Lauf 2020-2025,
+       4.612.977 Zeilen, 0 Fehler. Gegen PostgreSQL weiterhin offen (kein Zugang). -->
+- [ ] Identischer End-to-End-Lauf gegen PostgreSQL (blockiert bis Zugang da ist)
 
 ---
 
@@ -58,7 +59,9 @@ Umstellung von rohem SQL (SQLAlchemy + MySQL) auf Django ORM mit PostgreSQL.
 - [x] Indizes in `Meta.indexes` definieren (gleiche Indizes wie aktuell)
 - [x] Migrations erstellen (`makemigrations` -> `0001_initial.py`)
   <!-- `migrate` (Ausfuehrung gegen die DB) erst moeglich, sobald PostgreSQL-Zugangsdaten vorliegen -->
-- [ ] Migrations ausfuehren (`migrate`) - blockiert bis PostgreSQL-Zugang da ist
+- [x] Migrations ausfuehren (`migrate`)
+  <!-- Auf SQLite-Fallback ausgefuehrt: alle 7 Tabellen sauber erzeugt.
+       Gegen PostgreSQL noch offen (kein Zugang). -->
 
 ### 2.3 db_manager.py umschreiben
 - [x] `get_engine()` entfernen - Django verwaltet die Verbindung
@@ -107,11 +110,14 @@ Vorab ohne DB getestet: `python manage.py check` (0 Probleme), `makemigrations`
 (0001_initial mit allen 7 Tabellen), `py_compile` aller Module, `python main.py
 --help` (django.setup + komplette Import-Kette laden sauber). Der Rest braucht
 echten PostgreSQL-Zugang.
-- [ ] Migrations laufen fehlerfrei durch (`migrate`) - blockiert bis DB-Zugang
-- [ ] Pipeline laeuft komplett mit PostgreSQL - blockiert bis DB-Zugang
-- [ ] Datenimport funktioniert idempotent - blockiert bis DB-Zugang
-- [ ] Validierung liefert gleiche Ergebnisse wie vorher - blockiert bis DB-Zugang
-- [ ] Evaluation/Charts werden korrekt generiert - blockiert bis DB-Zugang
+<!-- Verifiziert 04.06.2026 auf dem SQLite-Fallback (kompletter Lauf 2020-2025).
+     Die identische Pruefung gegen PostgreSQL ist erst nach Zugang moeglich;
+     der Code-Pfad ist aber DB-unabhaengig (gleiches ORM, gleiche Migrations). -->
+- [x] Migrations laufen fehlerfrei durch (`migrate`) - auf SQLite verifiziert, Postgres offen
+- [x] Pipeline laeuft komplett - auf SQLite verifiziert (4,6 Mio. Zeilen, 0 Fehler), Postgres offen
+- [x] Datenimport funktioniert idempotent - Unit-Test + 24 `pipeline_log`-Eintraege bei Delete-then-Insert
+- [x] Validierung liefert gleiche Ergebnisse - auf SQLite verifiziert (100,0 % / 99,9 % gueltig), Postgres offen
+- [x] Evaluation/Charts werden korrekt generiert - 450 Charts, 432 CSVs, 6 PDF-Reports erzeugt
 - [x] Unter `/docs` dokumentieren: `django_migration.md`
 
 ### 2.8 PostgreSQL-Zugangsdaten
@@ -121,8 +127,8 @@ werden kann.
 
 - [x] In `.env` Platzhalter fuer die DB-Zugangsdaten eintragen (`PLATZHALTER_*`)
 - [ ] Echte PostgreSQL-Zugangsdaten in `.env` eintragen, sobald sie vorliegen
-- [ ] `.env.example` auf PostgreSQL-Felder umstellen (`DB_ENGINE`, `DB_NAME`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`)
-- [ ] Pruefen, dass keine echten Zugangsdaten im Code oder auf GitHub landen (nur ueber `.env`)
+- [x] `.env.example` auf PostgreSQL-Felder umgestellt (`DB_ENGINE`, `DB_NAME`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`) + SQLite-Fallback dokumentiert
+- [x] Geprueft: keine echten Zugangsdaten im Code/GitHub (grep sauber, `.env` in `.gitignore`)
 
 ---
 
@@ -232,10 +238,11 @@ Statt nur 2025 sollen die Jahre 2020 bis 2025 abgedeckt werden.
 - [x] Default: alle konfigurierten Jahre
 
 ### 5.8 Testen
-- [ ] Download fuer 2020 bis 2025 funktioniert
-- [ ] Datenimport fuer alle Jahre laeuft fehlerfrei
-- [ ] Validierung funktioniert ueber alle Jahre
-- [ ] Evaluation generiert korrekte Charts pro Jahr
+<!-- Verifiziert 04.06.2026 durch den kompletten Lauf auf dem SQLite-Fallback. -->
+- [x] Download fuer 2020 bis 2025 funktioniert - 24 Quartals-ZIPs (~200 MB) geladen
+- [x] Datenimport fuer alle Jahre laeuft fehlerfrei - 4.612.977 Zeilen, 0 Fehler
+- [x] Validierung funktioniert ueber alle Jahre - nonderiv 100,0 %, deriv 99,9 % gueltig
+- [x] Evaluation generiert korrekte Charts pro Jahr - 450 Charts + 6 Jahres-PDFs
 - [x] Unter `/docs` dokumentieren: `multi_year_extension.md`
 
 ---
@@ -245,35 +252,60 @@ Statt nur 2025 sollen die Jahre 2020 bis 2025 abgedeckt werden.
 Systematische Ueberpruefung des gesamten Codes nach Abschluss aller anderen Aufgaben.
 
 ### 6.1 Funktionale Pruefung
-- [ ] Pipeline komplett durchlaufen lassen (Download → Evaluation)
-- [ ] Ergebnisse stichprobenartig mit SEC-Rohdaten vergleichen
-- [ ] Idempotenz testen: Pipeline zweimal ausfuehren, gleiche Ergebnisse?
-- [ ] Edge Cases: leere Quartale, fehlende Dateien, Netzwerkfehler
+- [x] Pipeline komplett durchlaufen lassen (Download → Evaluation) - voller Lauf 2020-2025 auf SQLite
+- [ ] Ergebnisse stichprobenartig mit SEC-Rohdaten vergleichen - offen (manuelle Teamaufgabe)
+- [x] Idempotenz testen: Pipeline zweimal ausfuehren, gleiche Ergebnisse? - Unit-Test deckt Re-Import ab (gleiche Zeilenzahl), Lauf zeigt Delete-then-Insert
+- [x] Edge Cases: leere Quartale, fehlende Dateien, Netzwerkfehler - durch Unit-Tests abgedeckt (parser/downloader) + Leer-DataFrame-Bug gefixt
 
 ### 6.2 Code-Qualitaet
-- [ ] Alle Funktionen haben Docstrings
-- [ ] Keine hartcodierten Werte mehr (ausser wo bewusst entschieden)
-- [ ] Keine ungenutzten Imports oder Variablen
-- [ ] Einheitlicher Code-Stil ueber alle Module
-- [ ] Keine KI-Footprints im Code
+- [x] Alle Funktionen haben Docstrings - AST-Audit sauber (Gerüst-Dateien `apps/admin/views/__init__` ergaenzt)
+- [x] Keine hartcodierten Werte mehr (ausser wo bewusst entschieden) - in Aufgabe 4 nach `config.py`/`.env` ausgelagert
+- [x] Keine ungenutzten Imports oder Variablen - `admin.py`/`views.py` bereinigt
+  <!-- Ausnahme: `seaborn` in evaluation.py hat ein `# noqa: F401` (bewusst behalten).
+       Nicht eigenmaechtig entfernt - Team sollte entscheiden, ob es weg kann. -->
+- [x] Einheitlicher Code-Stil ueber alle Module - PEP-8, py_compile sauber, pyflakes clean
+- [x] Keine KI-Footprints im Code - grep ueber alle `.py` sauber
 
 ### 6.3 Sicherheit
-- [ ] Keine Credentials im Code oder auf GitHub
-- [ ] `.env` ist in `.gitignore`
-- [ ] SQL-Injection durch Django ORM verhindert
-- [ ] Keine sensiblen Daten in Logs
+- [x] Keine Credentials im Code oder auf GitHub - grep sauber
+- [x] `.env` ist in `.gitignore` - mit `git check-ignore` bestaetigt
+- [x] SQL-Injection durch Django ORM verhindert - kein Raw-SQL/`.raw()`/`cursor.execute` im Code
+- [x] Keine sensiblen Daten in Logs - Logs enthalten nur Quartale/Zeilenzahlen/URLs, keine Zugangsdaten
 
 ### 6.4 Performance
-- [ ] Langsame Queries identifizieren
-- [ ] Batch-Groessen pruefen
-- [ ] Unnoetige DB-Roundtrips eliminieren
-- [ ] Speicherverbrauch bei grossen Datenmengen pruefen
+<!-- Beobachtungen aus dem Lauf 04.06.2026 (SQLite): Import 13-20 s/Quartal,
+     Gesamt ~21 min fuer 4,6 Mio. Zeilen. Rigoroses Profiling steht noch aus. -->
+- [ ] Langsame Queries identifizieren - offen (kein Profiling durchgefuehrt)
+- [x] Batch-Groessen pruefen - `BATCH_SIZE=5000` hat 4,6 Mio. Zeilen problemlos verarbeitet
+- [x] Unnoetige DB-Roundtrips eliminieren - durchgaengig `bulk_create`/`bulk_update`/`values().annotate()`
+- [ ] Speicherverbrauch bei grossen Datenmengen pruefen - offen (kein Memory-Profiling)
 
 ### 6.5 Dokumentation
-- [ ] README.md ist aktuell und vollstaendig
-- [ ] Alle `/docs` Dateien sind vorhanden und verstaendlich
-- [ ] `CLAUDE.md` ist aktuell
-- [ ] Diese `Plan.md` ist vollstaendig abgehakt
+- [x] README.md ist aktuell und vollstaendig - Setup-Hinweis + Test-Abschnitt ergaenzt
+- [x] Alle `/docs` Dateien sind vorhanden und verstaendlich - inkl. `sqlite_fallback_und_tests.md`
+- [x] `CLAUDE.md` ist aktuell - keine Aenderung noetig
+- [ ] Diese `Plan.md` ist vollstaendig abgehakt - es bleiben bewusst offene Punkte (PostgreSQL-Zugang, SEC-Stichprobe, Profiling)
+
+### 6.6 Lokaler SQLite-Fallback und Unit-Tests
+<!-- Ergaenzt nach Absprache mit Umeyr: lokaler Test ohne PostgreSQL-Server
+     war blockiert, solange die Zugangsdaten fehlen. Loesung nutzt das
+     Django ORM, das die Datenbank austauschbar macht. -->
+
+- [x] SQLite-Fallback in `settings.py`: bei `DB_ENGINE=...sqlite3` wird eine
+  lokale Datei statt PostgreSQL genutzt (PostgreSQL bleibt der Standard)
+- [x] `*.sqlite3` in `.gitignore` - die DB-Datei landet nie auf GitHub
+- [x] `.env.example`: SQLite-Umschaltung dokumentiert (auskommentiert)
+- [x] Verifiziert: `migrate` baut auf SQLite alle 7 Tabellen identisch auf
+- [x] Unit-Tests unter `pipeline/tests/` (Djangos eingebautes Test-Framework,
+  kein neues Paket): data_preparation, validation (alle 8 Checks), parser,
+  downloader (Netzwerk gemockt), db_manager (Idempotenz + Orphan-Drop), models
+- [x] Tests laufen gegen eine temporaere SQLite-Test-DB: `python manage.py test`
+  (30 Tests, gruen, ohne PostgreSQL-Zugang)
+- [x] Unter `/docs` dokumentieren: `sqlite_fallback_und_tests.md`
+- [x] Gefundener Edge-Case gefixt: `prepare_transactions`/`prepare_holdings`
+  pruefen jetzt zuerst auf leer, dann erst `_clean_columns` - eine voellig
+  spaltenlose leere DataFrame (wie `read_tsv` sie bei fehlender Datei liefert)
+  crasht nicht mehr. Regressionstest ergaenzt.
 
 ---
 
@@ -293,3 +325,6 @@ Diese Quellen werden im Projekt verwendet. Keine anderen ohne Absprache:
 |-------|-----------|-------------|
 | 30.05.2026 | Aufgaben 3 und 4 getauscht: Docstrings → Team 1, Hardcoded → Team 2 | Vermeidung von Merge-Konflikten bei config.py (TARGET_YEAR wird von Team 2 in Aufgabe 5 umgebaut) |
 | 30.05.2026 | Abschnitt 2.8 (PostgreSQL-Zugangsdaten) ergaenzt | PostgreSQL-Zugangsdaten liegen noch nicht vor; bis dahin Arbeit mit Platzhaltern in `.env` (Absprache mit Emil) |
+| 04.06.2026 | Abschnitt 6.6 (SQLite-Fallback + Unit-Tests) ergaenzt | Lokales Testen war blockiert, solange der PostgreSQL-Server fehlt; das Django ORM macht SQLite zu einem Ein-Zeilen-Fallback (Absprache mit Umeyr) |
+| 04.06.2026 | Kompletter Lauf 2020-2025 auf SQLite + Code-Review (Aufgabe 6) | 4,6 Mio. Zeilen, 0 Fehler; Preflight SQLite-tauglich gemacht, Leer-DataFrame-Bug gefixt, Gerüst-Dateien aufgeraeumt. Offen bleiben: PostgreSQL-Zugang, SEC-Stichprobe, Profiling (Absprache mit Umeyr) |
+| 04.06.2026 | Output-Struktur pro Jahr + Repo-Cleanup | `output/<Jahr>/charts|tables|report` statt flach gemischt (config.py-Helfer + evaluation.py umgebaut, neu generiert: 6 PDFs/450 Charts/432 CSVs). Cleanup: leere emoji-`team.md` (2x) und Root-`__init__.py` entfernt, `setub_project.md`/`how_to_claude.md` nach `notes/` (Absprache mit Umeyr) |
