@@ -26,17 +26,15 @@ The database layer uses the **Django ORM with PostgreSQL**. Django is used purel
    `.env` and everything below works against a single local file (no
    server, no credentials). See `docs/sqlite_fallback_und_tests.md`.
 
-4. Create the database schema (runs the Django migrations):
-   ```
-   python manage.py migrate
-   ```
-
-5. Run the pipeline:
+4. Run the pipeline:
    ```
    python main.py                    # all years (2020-2025)
    python main.py --year 2024        # single year
    python main.py --years 2022-2024  # year range
    ```
+   That's the only command you need - `main.py` applies the database
+   migrations automatically on startup, so a fresh checkout works in one
+   step. (You can still run `python manage.py migrate` by hand if you want.)
 
 The pipeline handles everything automatically - downloading the data from SEC, parsing, cleaning, importing into PostgreSQL, running validation checks, and generating the evaluation charts + PDF report.
 

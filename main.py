@@ -17,6 +17,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "secpipeline.settings")
 django.setup()
 
 from django.conf import settings  # noqa: E402
+from django.core.management import call_command  # noqa: E402
 
 from modules import (  # noqa: E402
     data_preparation,
@@ -126,6 +127,18 @@ def preflight_checks(skip_sec=False):
     logging.info("All pre-flight checks passed")
 
 
+def apply_migrations():
+    """Make sure the database schema exists before we import anything.
+
+    Running migrate from here means a fresh checkout works with a single
+    `python main.py` - no separate `manage.py migrate` step. It's a no-op
+    once the schema is already up to date, so it's safe on every run.
+    """
+    logging.info("Applying database migrations...")
+    call_command("migrate", verbosity=0)
+    logging.info("Database schema is up to date")
+
+
 def print_summary(prepared, elapsed):
     """Show what the pipeline did - useful for the demo video."""
     logging.info("")
@@ -182,6 +195,8 @@ def main():
     logging.info("=== Pipeline started ===")
 
     preflight_checks(skip_sec=args.only_evaluate)
+
+    apply_migrations()
 
     # shortcut: only re-run evaluation on existing DB data
     if args.only_evaluate:
