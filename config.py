@@ -24,10 +24,13 @@ LOG_FILE = "logs/pipeline.log"
 START_YEAR = int(os.getenv("START_YEAR", 2020))
 END_YEAR = int(os.getenv("END_YEAR", 2025))
 TARGET_YEARS = list(range(START_YEAR, END_YEAR + 1))
-BATCH_SIZE = 5000
+BATCH_SIZE = int(os.getenv("BATCH_SIZE", 5000))
 REQUEST_DELAY = float(os.getenv("REQUEST_DELAY", 0.2))
 CREATED_BY = os.getenv("CREATED_BY", "group01")
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", 3))
+
+# how many companies a monthly ranking keeps (Top-N / Bottom-N)
+TOP_N = int(os.getenv("TOP_N", 5))
 
 # validation thresholds
 KNOWN_TRANS_CODES = {

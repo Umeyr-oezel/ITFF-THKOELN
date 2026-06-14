@@ -81,18 +81,18 @@ Fuer jede Datei jeweils:
 - Aenderung kurz festhalten (welche Datei, was geaendert, warum)
 
 ### 2.2 Root-Dateien
-- [ ] `config.py`
-- [ ] `main.py`
-- [ ] `manage.py`
+- [x] `config.py`
+- [x] `main.py`
+- [x] `manage.py`
 
 ### 2.3 modules/
-- [ ] `modules/__init__.py`
-- [ ] `modules/downloader.py`
-- [ ] `modules/parser.py`
-- [ ] `modules/data_preparation.py`
-- [ ] `modules/db_manager.py`
-- [ ] `modules/validation.py`
-- [ ] `modules/evaluation.py`
+- [x] `modules/__init__.py`
+- [x] `modules/downloader.py`
+- [x] `modules/parser.py`
+- [x] `modules/data_preparation.py`
+- [x] `modules/db_manager.py`
+- [x] `modules/validation.py`
+- [x] `modules/evaluation.py`
 
 ### 2.4 Django (pipeline/ + secpipeline/)
 - [ ] `pipeline/models.py`

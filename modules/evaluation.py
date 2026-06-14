@@ -12,7 +12,6 @@ import matplotlib
 matplotlib.use("Agg")  # no GUI needed
 import matplotlib.pyplot as plt  # noqa: E402
 import matplotlib.image as mpimg  # noqa: E402
-import seaborn as sns  # noqa: E402, F401
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 from django.db.models import Count, F, Max, Sum  # noqa: E402
@@ -38,21 +37,17 @@ COLOR_SUBTITLE = config.CHART_COLORS["subtitle"]
 
 LOGO_PATH = config.LOGO_PATH
 
-# each tuple: (trans_code, metric_col, order_col, label, file_tag)
-EVALUATIONS = [
-    ("P", "total_shares", "total_shares", "Shares Traded", "purchases_by_shares"),
-    ("P", "num_transactions", "num_transactions",
-     "Number of Transactions", "purchases_by_transactions"),
-    ("P", "total_volume", "total_volume",
-     "USD Nominal Volume", "purchases_by_volume"),
-    ("S", "total_shares", "total_shares",
-     "Shares Traded", "sales_by_shares"),
-    ("S", "num_transactions", "num_transactions",
-     "Number of Transactions", "sales_by_transactions"),
-    ("S", "total_volume", "total_volume", "USD Nominal Volume", "sales_by_volume"),
+# the three ranking metrics, each rendered for purchases and sales.
+# metric column doubles as the sort key, so one aggregate query per
+# (trans_code, month) feeds all three rankings (see query_month_aggregates).
+METRICS = [
+    ("total_shares", "Shares Traded"),
+    ("num_transactions", "Number of Transactions"),
+    ("total_volume", "USD Nominal Volume"),
 ]
 
 MONTH_NAMES = config.MONTH_NAMES
+TOP_N = config.TOP_N
 
 
 # --- DB queries ---
@@ -74,11 +69,13 @@ def _get_available_months(year):
     return list(months)
 
 
-def query_monthly_ranking(trans_code, order_col, month, year):
-    """Top-5 companies for a given metric in one month.
+def query_month_aggregates(trans_code, month, year):
+    """Aggregate every issuer's P or S activity for one month.
 
-    Groups by the issuer (reached through the submission FK) and takes
-    MAX() of name/ticker so the aggregate stays valid even where a
+    One GROUP BY returns all issuers; callers slice the Top-N per metric
+    in pandas (see top_n_by) instead of firing a separate query for each
+    metric. Groups by the issuer (reached through the submission FK) and
+    takes MAX() of name/ticker so the aggregate stays valid even where a
     company's label varies slightly between filings.
     """
     rows = (
@@ -97,13 +94,36 @@ def query_monthly_ranking(trans_code, order_col, month, year):
             num_transactions=Count("id"),
             total_volume=Sum("nominal_volume"),
         )
-        .order_by(f"-{order_col}")[:5]
     )
     df = pd.DataFrame(list(rows))
     if not df.empty:
         df["total_shares"] = pd.to_numeric(df["total_shares"], errors="coerce")
         df["total_volume"] = pd.to_numeric(df["total_volume"], errors="coerce")
     return df
+
+
+def top_n_by(df, order_col):
+    """Top-N rows by order_col, matching the old ORDER BY ... LIMIT.
+
+    NULL aggregates sort last and ties keep their fetch order (stable
+    sort), so this reproduces the ranking the per-metric SQL query used
+    to return.
+    """
+    if df.empty:
+        return df
+    ranked = df.sort_values(
+        order_col, ascending=False, na_position="last", kind="mergesort"
+    )
+    return ranked.head(TOP_N).reset_index(drop=True)
+
+
+def query_monthly_ranking(trans_code, order_col, month, year):
+    """Top-N issuers for one metric in one month (thin wrapper).
+
+    Kept for callers that only need a single ranking (e.g. the heatmap);
+    the monthly chart loop fetches the aggregates once and reuses them.
+    """
+    return top_n_by(query_month_aggregates(trans_code, month, year), order_col)
 
 
 # --- Chart helpers ---
@@ -183,6 +203,7 @@ def create_bar_chart(data, month_num, metric_col, metric_label,
 
     # annotate values next to each bar
     max_val = values.max() if len(values) else 1
+    max_val = max_val or 1  # avoid a degenerate axis when every value is 0
     for bar, val in zip(bars, values):
         ax.text(
             bar.get_width() + max_val * 0.015,
@@ -201,7 +222,8 @@ def create_bar_chart(data, month_num, metric_col, metric_label,
     ax.grid(axis="x", color=COLOR_GRID, linewidth=0.5, zorder=0)
     ax.invert_yaxis()
 
-    title_prefix = "Top 5 Insider" if trans_type == "Purchases" else "Bottom 5 Insider"
+    rank_word = "Top" if trans_type == "Purchases" else "Bottom"
+    title_prefix = f"{rank_word} {TOP_N} Insider"
     fig.text(
         0.06, 0.96,
         f"{title_prefix} {trans_type}  |  {metric_label}",
@@ -496,7 +518,7 @@ def create_heatmap(output_dir, year):
     )
     fig.text(
         0.06, 0.91,
-        "Companies appearing in Top-5 Sales (by Volume) across "
+        f"Companies appearing in Top-{TOP_N} Sales (by Volume) across "
         "multiple months",
         fontsize=11, color=COLOR_SUBTITLE, va="top",
     )
@@ -563,7 +585,7 @@ def generate_pdf_report(monthly_charts_dir, overview_charts_dir, pdf_path, year)
     pdf.cell(0, 12, "Pipeline Summary", ln=True)
     pdf.ln(5)
 
-    stats = _get_pipeline_stats()
+    stats = _get_pipeline_stats(year)
     pdf.set_font("Helvetica", "", 12)
     for label, value in stats:
         pdf.cell(120, 8, label, ln=False)
@@ -621,38 +643,44 @@ def generate_pdf_report(monthly_charts_dir, overview_charts_dir, pdf_path, year)
     return pdf_path
 
 
-def _get_pipeline_stats():
-    """Pull key numbers from the DB for the PDF summary page."""
-    stats = []
+def _get_pipeline_stats(year):
+    """Pull key numbers for one year's PDF summary page.
 
-    n_sub = Submission.objects.count()
+    Everything is scoped to the year through source_quarter (e.g.
+    '2020Q1'), so each annual report shows that year's figures instead of
+    the pipeline-wide totals across every loaded year.
+    """
+    stats = []
+    yq = {"source_quarter__startswith": str(year)}
+
+    n_sub = Submission.objects.filter(**yq).count()
     stats.append(("Total Submissions (Filings)", f"{n_sub:,}"))
 
-    n_nd = NonderivTrans.objects.count()
+    n_nd = NonderivTrans.objects.filter(**yq).count()
     stats.append(("Non-Derivative Transactions", f"{n_nd:,}"))
 
-    n_dt = DerivTrans.objects.count()
+    n_dt = DerivTrans.objects.filter(**yq).count()
     stats.append(("Derivative Transactions", f"{n_dt:,}"))
 
-    n_valid_nd = NonderivTrans.objects.filter(is_valid=True).count()
+    n_valid_nd = NonderivTrans.objects.filter(**yq, is_valid=True).count()
     pct_nd = (n_valid_nd / n_nd * 100) if n_nd else 0
     stats.append((
         "Valid Non-Deriv Transactions",
         f"{n_valid_nd:,} ({pct_nd:.1f}%)",
     ))
 
-    n_valid_dt = DerivTrans.objects.filter(is_valid=True).count()
+    n_valid_dt = DerivTrans.objects.filter(**yq, is_valid=True).count()
     pct_dt = (n_valid_dt / n_dt * 100) if n_dt else 0
     stats.append((
         "Valid Deriv Transactions",
         f"{n_valid_dt:,} ({pct_dt:.1f}%)",
     ))
 
-    n_vlog = ValidationLog.objects.count()
+    n_vlog = ValidationLog.objects.filter(**yq).count()
     stats.append(("Validation Log Entries", f"{n_vlog:,}"))
 
     quarters = (
-        Submission.objects
+        Submission.objects.filter(**yq)
         .values_list("source_quarter", flat=True)
         .distinct()
         .order_by("source_quarter")
@@ -660,12 +688,12 @@ def _get_pipeline_stats():
     q_list = ", ".join(quarters)
     stats.append(("Quarters Loaded", q_list))
 
-    n_companies = Submission.objects.aggregate(
+    n_companies = Submission.objects.filter(**yq).aggregate(
         n=Count("issuer_cik", distinct=True)
     )["n"]
     stats.append(("Unique Companies (Issuers)", f"{n_companies:,}"))
 
-    n_insiders = Submission.objects.aggregate(
+    n_insiders = Submission.objects.filter(**yq).aggregate(
         n=Count("rptowner_cik", distinct=True)
     )["n"]
     stats.append(("Unique Insiders (Reporters)", f"{n_insiders:,}"))
@@ -699,30 +727,33 @@ def generate_evaluations_for_year(year):
     csv_count = 0
 
     for month in months:
-        for trans_code, metric_col, order_col, metric_label, file_tag in EVALUATIONS:
+        for trans_code in ("P", "S"):
             trans_type = "Purchases" if trans_code == "P" else "Sales"
 
-            df = query_monthly_ranking(trans_code, order_col, month, year)
-
-            if df.empty:
+            # one aggregate query per (trans_code, month) feeds all three
+            # metric rankings below
+            agg = query_month_aggregates(trans_code, month, year)
+            if agg.empty:
                 logger.info(
-                    f"  {year}-{month:02d} {trans_type}/{metric_label}: "
-                    f"no data, skipping"
+                    f"  {year}-{month:02d} {trans_type}: no data, skipping"
                 )
                 continue
 
-            chart_path = create_bar_chart(
-                df, month, metric_col, metric_label,
-                trans_type, monthly_charts_dir, year
-            )
-            if chart_path:
-                chart_count += 1
+            for metric_col, metric_label in METRICS:
+                df = top_n_by(agg, metric_col)
 
-            csv_path = export_table(
-                df, month, metric_label, trans_type, tables_dir, year
-            )
-            if csv_path:
-                csv_count += 1
+                chart_path = create_bar_chart(
+                    df, month, metric_col, metric_label,
+                    trans_type, monthly_charts_dir, year
+                )
+                if chart_path:
+                    chart_count += 1
+
+                csv_path = export_table(
+                    df, month, metric_label, trans_type, tables_dir, year
+                )
+                if csv_path:
+                    csv_count += 1
 
         logger.info(f"  {year}-{month:02d}: done")
 

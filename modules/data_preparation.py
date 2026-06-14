@@ -4,7 +4,6 @@ Handles type conversions, column renaming, owner-merge for
 submissions, and adds pipeline metadata to every table.
 """
 import logging
-from datetime import datetime
 import pandas as pd
 
 import config
@@ -25,10 +24,13 @@ def _parse_date(series):
 
 
 def add_metadata(df, quarter):
-    """Stamp each row with who created it and when."""
+    """Stamp each row with who created it and which quarter it came from.
+
+    created_at is intentionally not set here - the models carry
+    auto_now_add, so the database fills the timestamp on insert.
+    """
     df["created_by"] = config.CREATED_BY
     df["source_quarter"] = quarter
-    df["created_at"] = datetime.now()
     return df
 
 

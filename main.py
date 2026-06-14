@@ -63,15 +63,24 @@ def resolve_years(args):
 
     Falls back to config.TARGET_YEARS when neither flag is given.
     """
+    if args.year and args.years:
+        logging.warning("--year and --years both given; using --year")
     if args.year:
         return [args.year]
     if args.years:
         parts = args.years.split("-")
-        if len(parts) == 2:
-            start, end = int(parts[0]), int(parts[1])
-            return list(range(start, end + 1))
-        # single value passed as string
-        return [int(args.years)]
+        try:
+            if len(parts) == 2:
+                start, end = int(parts[0]), int(parts[1])
+                return list(range(start, end + 1))
+            if len(parts) == 1:
+                return [int(parts[0])]
+        except ValueError:
+            pass
+        logging.error(
+            f"Invalid --years value: {args.years!r} (use e.g. 2020-2023)"
+        )
+        sys.exit(1)
     return list(config.TARGET_YEARS)
 
 
@@ -166,14 +175,14 @@ def print_summary(prepared, elapsed):
     logging.info(f"  Duration:    {elapsed:.1f}s")
 
     # count generated output files (charts + tables across all year folders)
-    chart_count = sum(
-        sum(1 for f in files if f.endswith(".png"))
-        for _, _, files in os.walk(config.OUTPUT_DIR)
-    )
-    csv_count = sum(
-        sum(1 for f in files if f.endswith(".csv"))
-        for _, _, files in os.walk(config.OUTPUT_DIR)
-    )
+    chart_count = 0
+    csv_count = 0
+    for _, _, files in os.walk(config.OUTPUT_DIR):
+        for f in files:
+            if f.endswith(".png"):
+                chart_count += 1
+            elif f.endswith(".csv"):
+                csv_count += 1
     logging.info(f"  Charts:      {chart_count}")
     logging.info(f"  CSV tables:  {csv_count}")
     logging.info("=" * 55)
