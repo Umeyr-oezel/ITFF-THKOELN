@@ -1,3 +1,5 @@
+#Hinweis: Aufgabe 1 könnte änderungen bekommen. Diese ist unabhängig von den restlichen Aufgaben.
+
 # Plan.md - ITFF-THKOELN Projektplan
 
 > **Hinweis fuer Claude:** Lies diese Datei vor JEDEM Arbeitsschritt.
