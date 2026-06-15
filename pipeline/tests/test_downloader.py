@@ -56,6 +56,21 @@ class AvailableQuartersTests(SimpleTestCase):
             ("2024Q2", "https://www.sec.gov/files/2024q2_form345.zip"), result
         )
 
+    def test_filters_to_requested_years(self):
+        """Passing years scopes discovery; quarters outside them are ignored
+        (so --year/--years really limits what gets downloaded)."""
+        html = """
+        <html><body>
+          <a href="/files/2023q4_form345.zip">2023 Q4</a>
+          <a href="/files/2024q1_form345.zip">2024 Q1</a>
+        </body></html>
+        """
+        fake = mock.Mock(text=html)
+        fake.raise_for_status = mock.Mock()
+        with mock.patch.object(downloader.requests, "get", return_value=fake):
+            result = downloader.get_available_quarters(years=[2024])
+        self.assertEqual([label for label, _ in result], ["2024Q1"])
+
 
 class DownloadRetryTests(SimpleTestCase):
     def test_retries_on_server_error_then_succeeds(self):

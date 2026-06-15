@@ -32,6 +32,16 @@ class TopNByTests(SimpleTestCase):
         out = evaluation.top_n_by(self._frame(), "total_volume")
         self.assertFalse(out["total_volume"].isna().any())
 
+    def test_ties_break_by_issuer_cik(self):
+        """Equal metric values are ordered by issuer_cik, so the ranking is
+        reproducible regardless of the input order."""
+        df = pd.DataFrame({
+            "issuer_cik": [30, 10, 20],
+            "num_transactions": [5, 5, 5],
+        })
+        out = evaluation.top_n_by(df, "num_transactions")
+        self.assertEqual(list(out["issuer_cik"]), [10, 20, 30])
+
     def test_empty_frame_passes_through(self):
         """An empty input returns empty instead of raising."""
         self.assertTrue(

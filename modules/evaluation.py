@@ -103,16 +103,20 @@ def query_month_aggregates(trans_code, month, year):
 
 
 def top_n_by(df, order_col):
-    """Top-N rows by order_col, matching the old ORDER BY ... LIMIT.
+    """Top-N rows by order_col, with a deterministic tie-break.
 
-    NULL aggregates sort last and ties keep their fetch order (stable
-    sort), so this reproduces the ranking the per-metric SQL query used
-    to return.
+    Sorts by the metric (highest first, NULLs last) and breaks ties by
+    issuer_cik, so equal-valued rows always land in the same, reproducible
+    order. Without that, the boundary of the Top-N could vary between runs
+    or database backends whenever the metric ties (common for the integer
+    transaction-count metric). Returns at most config.TOP_N rows.
     """
     if df.empty:
         return df
     ranked = df.sort_values(
-        order_col, ascending=False, na_position="last", kind="mergesort"
+        by=[order_col, "issuer_cik"],
+        ascending=[False, True],
+        na_position="last",
     )
     return ranked.head(TOP_N).reset_index(drop=True)
 

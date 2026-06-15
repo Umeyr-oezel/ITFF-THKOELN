@@ -15,12 +15,16 @@ import config
 logger = logging.getLogger(__name__)
 
 
-def get_available_quarters():
-    """Scrape the SEC page to find which quarters have data for all TARGET_YEARS.
+def get_available_quarters(years=None):
+    """Scrape the SEC page to find which quarters have data for the given years.
 
-    Returns list of (quarter_label, download_url) tuples across all configured years.
-    No hardcoding - discovers dynamically what's online.
+    years defaults to config.TARGET_YEARS; pass a subset (e.g. from
+    --year/--years) to only discover those. Returns a list of
+    (quarter_label, download_url) tuples. No hardcoding - discovers
+    dynamically what's online.
     """
+    if years is None:
+        years = config.TARGET_YEARS
     headers = {"User-Agent": config.USER_AGENT}
     resp = requests.get(config.SEC_BASE_URL, headers=headers, timeout=30)
     resp.raise_for_status()
@@ -28,7 +32,7 @@ def get_available_quarters():
     soup = BeautifulSoup(resp.text, "html.parser")
     quarters = []
 
-    years_pattern = "|".join(str(y) for y in config.TARGET_YEARS)
+    years_pattern = "|".join(str(y) for y in years)
 
     for link in soup.find_all("a", href=True):
         href = link["href"]
@@ -49,7 +53,7 @@ def get_available_quarters():
             logger.info(f"Found: {quarter_label} -> {full_url}")
 
     if not quarters:
-        logger.warning(f"No quarters found for years {config.TARGET_YEARS}")
+        logger.warning(f"No quarters found for years {list(years)}")
 
     return sorted(quarters, key=lambda x: x[0])
 
@@ -108,17 +112,19 @@ def download_quarter(url, filename, max_retries=None):
     return None
 
 
-def list_existing_quarters():
+def list_existing_quarters(years=None):
     """Find already-downloaded ZIPs without hitting SEC.
 
-    Useful with --skip-download so we don't need internet access.
-    Scans for all TARGET_YEARS, not just one.
+    Useful with --skip-download so we don't need internet access. years
+    defaults to config.TARGET_YEARS; pass a subset to only list those.
     """
+    if years is None:
+        years = config.TARGET_YEARS
     results = []
     if not os.path.isdir(config.RAW_DIR):
         return results
 
-    years_pattern = "|".join(str(y) for y in config.TARGET_YEARS)
+    years_pattern = "|".join(str(y) for y in years)
 
     for fname in sorted(os.listdir(config.RAW_DIR)):
         match = re.match(
@@ -135,13 +141,13 @@ def list_existing_quarters():
     return results
 
 
-def download_all_quarters():
-    """Download all quarters for TARGET_YEARS. Skips existing files.
+def download_all_quarters(years=None):
+    """Download all quarters for the given years (default config.TARGET_YEARS).
 
-    Returns list of (quarter_label, zip_path) tuples.
+    Skips existing files. Returns list of (quarter_label, zip_path) tuples.
     """
     os.makedirs(config.RAW_DIR, exist_ok=True)
-    quarters = get_available_quarters()
+    quarters = get_available_quarters(years)
 
     if not quarters:
         logger.error("No quarters to download!")

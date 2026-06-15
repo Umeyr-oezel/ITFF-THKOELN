@@ -216,12 +216,12 @@ def main():
         logging.info(f"=== Pipeline finished in {elapsed:.1f}s ===")
         return
 
-    # phase 1 - grab ZIPs from SEC
+    # phase 1 - grab ZIPs from SEC (scoped to the requested years)
     if args.skip_download:
         logging.info("--skip-download: using existing ZIP files")
-        zip_files = downloader.list_existing_quarters()
+        zip_files = downloader.list_existing_quarters(years)
     else:
-        zip_files = downloader.download_all_quarters()
+        zip_files = downloader.download_all_quarters(years)
 
     # phase 2 - extract TSVs into DataFrames
     raw_data = parser.parse_all_quarters(zip_files)

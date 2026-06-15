@@ -133,15 +133,14 @@ Vier Punkte brauchten laut CLAUDE.md eine Absprache. Festgelegt wurde:
   bzw. „Top-5" in Titeln/Heatmap) kommt jetzt aus `config.py`.
 
 #### Hinweis zur Output-Gleichheit nach dem C-Refactor
-Der Refactor soll die erzeugten Charts/CSVs **nicht** verändern. `top_n_by`
-repliziert die alte `ORDER BY ... LIMIT`-Semantik bewusst: NULL-Aggregate
-landen hinten (`na_position="last"`), und ein stabiler Sort (`mergesort`)
-hält Gleichstände in ihrer Abrufreihenfolge. Die Test-Suite bleibt grün.
-
-Eine **visuelle Vorher-/Nachher-Kontrolle gegen echte Daten** steht noch
-aus, weil lokal keine befüllte Datenbank vorliegt. Sie sollte beim ersten
-Lauf gegen eine Datenbank mit Daten (SQLite-Fallback oder PostgreSQL)
-nachgeholt werden.
+Der Refactor verändert **keine Werte** in den Ranglisten. Der einzige
+Unterschied betrifft die **Reihenfolge bei Gleichstand** und nur die Metrik
+„Transaktions-Anzahl" (kleine ganze Zahlen → viele Gleichstände); `shares`-
+und `volume`-Ranglisten (Kommazahlen) sind unberührt. `top_n_by` bricht
+Gleichstände jetzt **deterministisch** über `issuer_cik`, damit die
+Reihenfolge zwischen Läufen und Datenbank-Backends reproduzierbar ist – die
+alte SQL-Sortierung war bei Gleichstand undefiniert. Die Test-Suite deckt
+das ab (`test_ties_break_by_issuer_cik`).
 
 ---
 
@@ -206,9 +205,47 @@ alle drei umgesetzt.
 
 ---
 
+## Nachtrag: `--year`/`--years` galt nur für die Auswertung (Bugfix)
+
+Beim ersten echten Pipeline-Lauf (`main.py --year 2024` gegen den
+SQLite-Fallback) fiel auf, dass trotzdem **alle 24 Quartale (2020–2025)**
+heruntergeladen und importiert wurden – nur die Auswertung war auf 2024
+beschränkt. Ursache: Das Ergebnis von `resolve_years()` wurde **nur** an
+Phase 6 (`evaluation.generate_all_evaluations`) übergeben; Download, Parsen
+und Import liefen weiter über `config.TARGET_YEARS`. Das widersprach dem
+README, das `--year`/`--years` als echten Einzeljahr-/Bereichslauf bewirbt.
+
+**Fix:** `years` wird jetzt durch die ganze Pipeline gereicht.
+- `modules/downloader.py`: `get_available_quarters`, `list_existing_quarters`
+  und `download_all_quarters` nehmen einen optionalen `years`-Parameter
+  (Default weiterhin `config.TARGET_YEARS`).
+- `main.py`: Phase 1 ruft `download_all_quarters(years)` bzw.
+  `list_existing_quarters(years)`.
+- Neuer Test in `test_downloader.py` (`test_filters_to_requested_years`)
+  sichert ab, dass Quartale außerhalb der angefragten Jahre ignoriert werden.
+
+Verifiziert: `--years 2023-2024` verarbeitet jetzt nur noch die 8 Quartale
+dieser beiden Jahre statt 24.
+
+---
+
+## Zum C-Refactor: echter Lauf + Output-Vergleich
+
+Die Pipeline lief einmal komplett gegen echte SEC-Daten (2020–2025,
+4,6 Mio. Zeilen, SQLite-Fallback): Download, Import, Validierung und die
+Chart-/PDF-Erzeugung liefen **ohne Fehler** durch.
+
+Der Vergleich der erzeugten CSVs vorher/nachher zeigte: nur die
+`*_by_number_of_transactions.csv` wichen ab, und zwar ausschließlich in der
+**Reihenfolge gleichauf liegender Firmen** (gleiche Transaktionszahl), z. T.
+an der Top-5-Grenze. Keine Werte änderten sich. Mit dem deterministischen
+Tie-Break (s. o.) ist die Reihenfolge nun stabil und reproduzierbar. Die
+`shares`- und `volume`-Ranglisten waren unverändert.
+
+---
+
 ## Offen nach Aufgabe 2
 
-- **Visueller Output-Vergleich** des C-Refactors gegen echte Daten (s. o.).
 - Reine **Performance-Themen** (Voll-Load der Tabelle in `validation.py`,
   Query-Profiling) gehören zu Aufgabe 4.3 und brauchen den echten
   PostgreSQL-Server.
