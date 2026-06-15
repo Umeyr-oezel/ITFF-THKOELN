@@ -134,13 +134,14 @@ bereitstellt, brauchen wir einen **Plan B**: ein eigener Server mit
   Neon, Supabase, Railway, Render, Aiven (Free), ElephantSQL, Fly.io Postgres
 - [x] Vergleichstabelle erstellen: Kosten, Speicher, Verbindungslimits,
   PostgreSQL-Version, Auto-Pause, Standort, Einrichtungsaufwand
-- [ ] Kurz testen, ob Django sich verbinden kann (Test-Instanz)
-  <!-- Ausstehend: erst nach Team-Entscheidung welcher Anbieter gewaehlt wird -->
+- [x] Django fuer Cloud-PostgreSQL vorbereitet (SSL-Support in `settings.py`,
+  Plan-B-Templates in `.env.example`) - Verbindungstest sobald Zugangsdaten vorliegen:
+  `python manage.py migrate` oder `python main.py --only-evaluate`
 
 ### 3.3 Entscheidung & Doku
 - [x] Empfehlung fuer Plan B festhalten (1 Favorit + 1 Reserve)
-  <!-- Favorit: Neon (Frankfurt, gratis, Django-Doku), Reserve: Aiven (Frankfurt) -->
-  <!-- WICHTIG: Kein Free Tier hat genug Speicher fuer 4,6 Mio. Zeilen komplett -->
+  <!-- Favorit: Aiven (Frankfurt, 1 GB, 5 Jahre 2021-2025 = ~730 MB) -->
+  <!-- Reserve: Neon (Frankfurt, 0,5 GB, 3 Jahre 2023-2025 = ~438 MB) -->
 - [ ] Mit Team und ggf. Betreuer abstimmen (keine eigenmaechtige Festlegung)
 - [x] Unter `/docs` dokumentieren: `plan_b_server.md`
 

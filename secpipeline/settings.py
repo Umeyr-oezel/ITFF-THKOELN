@@ -43,6 +43,10 @@ INSTALLED_APPS = [
 # migrations build an identical schema in a single local file - no
 # server, no credentials. SQLite ignores host/user/password, so it only
 # gets a file path under BASE_DIR; everything else stays the same.
+#
+# For cloud PostgreSQL providers (Aiven, Neon) that require TLS, set
+# DB_SSLMODE=require in .env. CONN_HEALTH_CHECKS=True is recommended
+# for Neon to recover from the 5-minute auto-pause reconnect.
 DB_ENGINE = os.getenv('DB_ENGINE', 'django.db.backends.postgresql')
 
 if DB_ENGINE.endswith('sqlite3'):
@@ -53,6 +57,11 @@ if DB_ENGINE.endswith('sqlite3'):
         }
     }
 else:
+    _options = {}
+    _sslmode = os.getenv('DB_SSLMODE', '')
+    if _sslmode:
+        _options['sslmode'] = _sslmode
+
     DATABASES = {
         'default': {
             'ENGINE': DB_ENGINE,
@@ -61,6 +70,9 @@ else:
             'PASSWORD': os.getenv('DB_PASSWORD', ''),
             'HOST': os.getenv('DB_HOST', 'localhost'),
             'PORT': os.getenv('DB_PORT', '5432'),
+            'OPTIONS': _options,
+            'CONN_MAX_AGE': int(os.getenv('DB_CONN_MAX_AGE', '0')),
+            'CONN_HEALTH_CHECKS': os.getenv('DB_CONN_HEALTH_CHECKS', 'False') == 'True',
         }
     }
 
