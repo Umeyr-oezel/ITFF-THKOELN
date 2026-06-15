@@ -122,24 +122,27 @@ bereitstellt, brauchen wir einen **Plan B**: ein eigener Server mit
 (gleiche Funktionalitaet, keine harten Limits, die das Projekt einschraenken).
 
 ### 3.1 Anforderungen festlegen
-- [ ] Kostenlos (dauerhaft Free-Tier, keine Kreditkarten-Falle)
-- [ ] Vollwertige PostgreSQL-Datenbank (Version, Speicherplatz)
-- [ ] Keine Benachteiligung: ausreichend Speicher/Verbindungen, kein automatisches
+- [x] Kostenlos (dauerhaft Free-Tier, keine Kreditkarten-Falle)
+- [x] Vollwertige PostgreSQL-Datenbank (Version, Speicherplatz)
+- [x] Keine Benachteiligung: ausreichend Speicher/Verbindungen, kein automatisches
   Pausieren/Loeschen, das den Pipeline-Lauf (4,6 Mio. Zeilen) blockiert
-- [ ] Datenschutz/Standort beruecksichtigen (moeglichst EU)
-- [ ] Erreichbar von ausserhalb (fuer den Pipeline-Import per Django)
+- [x] Datenschutz/Standort beruecksichtigen (moeglichst EU)
+- [x] Erreichbar von ausserhalb (fuer den Pipeline-Import per Django)
 
 ### 3.2 Optionen recherchieren
-- [ ] Kandidaten sammeln und pruefen (Startpunkte, zu verifizieren):
+- [x] Kandidaten sammeln und pruefen (Startpunkte, zu verifizieren):
   Neon, Supabase, Railway, Render, Aiven (Free), ElephantSQL, Fly.io Postgres
-- [ ] Vergleichstabelle erstellen: Kosten, Speicher, Verbindungslimits,
+- [x] Vergleichstabelle erstellen: Kosten, Speicher, Verbindungslimits,
   PostgreSQL-Version, Auto-Pause, Standort, Einrichtungsaufwand
 - [ ] Kurz testen, ob Django sich verbinden kann (Test-Instanz)
+  <!-- Ausstehend: erst nach Team-Entscheidung welcher Anbieter gewaehlt wird -->
 
 ### 3.3 Entscheidung & Doku
-- [ ] Empfehlung fuer Plan B festhalten (1 Favorit + 1 Reserve)
+- [x] Empfehlung fuer Plan B festhalten (1 Favorit + 1 Reserve)
+  <!-- Favorit: Neon (Frankfurt, gratis, Django-Doku), Reserve: Aiven (Frankfurt) -->
+  <!-- WICHTIG: Kein Free Tier hat genug Speicher fuer 4,6 Mio. Zeilen komplett -->
 - [ ] Mit Team und ggf. Betreuer abstimmen (keine eigenmaechtige Festlegung)
-- [ ] Unter `/docs` dokumentieren: `plan_b_server.md`
+- [x] Unter `/docs` dokumentieren: `plan_b_server.md`
 
 ---
 
