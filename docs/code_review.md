@@ -5,11 +5,12 @@ jede Datei steht hier, was geprüft wurde (Effizienz, Hardcoded-Werte,
 Bugs), was geändert wurde und warum. Geprüft wird von Team 2 (Kenan,
 Matthias).
 
-**Stand:** Abschnitte **2.2 (Root-Dateien)** und **2.3 (`modules/`)** sind
-durch. Die Django-Dateien (2.4) und der Querschnitt (2.5) stehen noch aus.
+**Stand:** Aufgabe 2 ist inhaltlich durch – **2.2 (Root-Dateien)**,
+**2.3 (`modules/`)**, **2.4 (Django-Dateien)**, **2.5 (Querschnitt)** und
+**2.6 (diese Doku)**.
 
 Die Tests (`python manage.py test`) laufen nach allen Änderungen
-vollständig grün durch (31 Tests).
+vollständig grün durch (34 Tests).
 
 ---
 
@@ -141,3 +142,73 @@ Eine **visuelle Vorher-/Nachher-Kontrolle gegen echte Daten** steht noch
 aus, weil lokal keine befüllte Datenbank vorliegt. Sie sollte beim ersten
 Lauf gegen eine Datenbank mit Daten (SQLite-Fallback oder PostgreSQL)
 nachgeholt werden.
+
+---
+
+## 2.4 Django-Dateien
+
+Weitere abgestimmte Entscheidungen (Absprache): **E** = `urls.py` aufräumen,
+**F** = `SECRET_KEY`/`DEBUG` nach `.env`, **G** = `top_n_by`-Test ergänzen –
+alle drei umgesetzt.
+
+### `pipeline/models.py`
+- Sauber und gut dokumentiert: `submissions` als Eltern-Tabelle, die vier
+  Kind-Tabellen hängen über einen echten Foreign Key mit `CASCADE` daran,
+  passende Indizes sind gesetzt. Keine Bugs, nichts geändert.
+
+### `pipeline/admin.py`, `pipeline/apps.py`, `pipeline/views.py`
+- Bewusst leer bzw. Standard-AppConfig – das Projekt nutzt Django nur als
+  ORM (kein Web-Frontend, kein Admin). Korrekt dokumentiert, nichts zu tun.
+
+### `pipeline/migrations/0001_initial.py`
+- Auto-generiert und deckungsgleich mit den Modellen. Migrationen werden
+  nicht von Hand bearbeitet – nur geprüft.
+
+### `secpipeline/urls.py` (Entscheidung E)
+- **Aufgeräumt:** War noch das Django-Default-Boilerplate mit langem
+  Beispiel-Docstring und einer `admin/`-Route auf `admin.site.urls`. Problem:
+  `django.contrib.admin` steht gar nicht in `INSTALLED_APPS`, und
+  `settings.py` setzt kein `ROOT_URLCONF` – die Datei war also komplett
+  unverdrahtet und verwies auf eine nicht installierte App. Jetzt: leere
+  `urlpatterns = []` plus kurzer Docstring „kein Web-Layer" (konsistent zu
+  `views.py`/`admin.py`).
+
+### `secpipeline/settings.py` (Entscheidung F)
+- **Hardcoded (behoben):** `SECRET_KEY` und `DEBUG` standen fest im Code.
+  Beide kommen jetzt aus `.env` (`os.getenv`), mit dem bisherigen Wert als
+  Fallback, damit Test-Suite und SQLite-Setup **ohne** `.env` weiterlaufen.
+  In `.env.example` ergänzt. Praktisches Risiko war gering (kein Web-Layer,
+  der den Key nutzt), aber es ist genau die Art Wert, die nach `.env` gehört –
+  passend dazu, dass die DB-Zugangsdaten dort schon liegen.
+
+### `pipeline/tests/*` (Entscheidung G)
+- Bestehende Tests sind solide: Cascade-Delete, Import-Idempotenz,
+  Audit-Log, Orphan-Drop, Daten-Aufbereitung, Parser, Downloader-Retry und
+  alle 8 Validierungs-Checks.
+- **Neu:** `pipeline/tests/test_evaluation.py` testet die neue Funktion
+  `top_n_by` aus dem C-Refactor (reines pandas, ohne DB): höchste Werte
+  zuerst, Begrenzung auf `TOP_N`, NULL-Werte landen hinten. Damit ist die
+  pandas-Seite des Refactors testseitig abgesichert (die DB-seitige
+  Gleichheit bleibt der visuelle Lauf gegen echte Daten, s. o.).
+
+---
+
+## 2.5 Querschnitt (über alle Dateien)
+
+- **Ungenutzte Imports:** `seaborn` (evaluation.py) und `datetime`
+  (data_preparation.py) entfernt; `py_compile` läuft über alle Module sauber.
+- **Code-Stil:** PEP-8, englische Namen/Docstrings, jede Funktion und jedes
+  Modul hat einen Docstring – beim Review eingehalten.
+- **Keine neuen Hardcoded-Werte:** Die ausgelagerten Werte (`BATCH_SIZE`,
+  `TOP_N`, `SECRET_KEY`, `DEBUG`) liegen jetzt zentral in `config.py`/`.env`.
+- **Bugfixes durch Tests abgesichert:** `manage.py test` bleibt grün
+  (**34 Tests**), inkl. des neuen `top_n_by`-Tests.
+
+---
+
+## Offen nach Aufgabe 2
+
+- **Visueller Output-Vergleich** des C-Refactors gegen echte Daten (s. o.).
+- Reine **Performance-Themen** (Voll-Load der Tabelle in `validation.py`,
+  Query-Profiling) gehören zu Aufgabe 4.3 und brauchen den echten
+  PostgreSQL-Server.

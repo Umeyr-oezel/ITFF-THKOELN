@@ -26,11 +26,17 @@ load_dotenv(BASE_DIR / ".env")
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-#*a@wt1g_epa=72u46ngbvr%cgu%1vbx0a3y5wyiat0kyp!cdt'
+# SECURITY WARNING: keep the secret key secret in production - set it via
+# .env there. The fallback only exists so the test suite and the local
+# SQLite setup run without an .env; this project has no web layer that
+# actually relies on the key.
+SECRET_KEY = os.getenv(
+    "SECRET_KEY",
+    "django-insecure-#*a@wt1g_epa=72u46ngbvr%cgu%1vbx0a3y5wyiat0kyp!cdt",
+)
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# SECURITY WARNING: don't run with debug on in production. Read from .env.
+DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 
 ALLOWED_HOSTS = []
 

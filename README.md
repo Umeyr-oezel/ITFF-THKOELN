@@ -104,4 +104,6 @@ the downloader (network mocked), and the idempotent import. See
 - **Task 3 (Docstrings):** done. See `docs/docstring_guidelines.md`.
 - **Task 4 (Flexible config):** done. All hardcoded values moved to `config.py` or `.env`. See `docs/configuration.md`.
 - **Task 5 (Multi-year history):** done. Pipeline now covers 2020–2025 by default. CLI flags `--year` and `--years` added. See `docs/multi_year_extension.md`.
-- **Task 6 (Code review):** scheduled — see `Plan.md`.
+- **Task 6 (Code review):** done. File-by-file review of the root files, `modules/`, and the Django layer — efficiency, hardcoded values, and bugs fixed; the test suite stays green (34 tests). See `docs/code_review.md`.
+
+The project has since moved into a follow-up phase (presentation, Plan-B server research, and the final PostgreSQL migration) — see `Plan.md` for the current task list.

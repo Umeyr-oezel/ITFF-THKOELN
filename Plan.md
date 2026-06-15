@@ -95,22 +95,22 @@ Fuer jede Datei jeweils:
 - [x] `modules/evaluation.py`
 
 ### 2.4 Django (pipeline/ + secpipeline/)
-- [ ] `pipeline/models.py`
-- [ ] `pipeline/admin.py`
-- [ ] `pipeline/apps.py`
-- [ ] `pipeline/views.py`
-- [ ] `secpipeline/settings.py`
-- [ ] `secpipeline/urls.py`
-- [ ] `pipeline/tests/` (Tests pruefen, ggf. erweitern)
+- [x] `pipeline/models.py`
+- [x] `pipeline/admin.py`
+- [x] `pipeline/apps.py`
+- [x] `pipeline/views.py`
+- [x] `secpipeline/settings.py`
+- [x] `secpipeline/urls.py`
+- [x] `pipeline/tests/` (Tests pruefen, ggf. erweitern)
 
 ### 2.5 Querschnitt (ueber alle Dateien)
-- [ ] Keine ungenutzten Imports/Variablen (`pyflakes`/`py_compile` sauber)
-- [ ] Einheitlicher Code-Stil (PEP-8, Englisch, Docstrings vorhanden)
-- [ ] Keine neuen Hardcoded-Werte; bewusste Ausnahmen kommentieren
-- [ ] Bugfixes durch Unit-Tests absichern (`python manage.py test` bleibt gruen)
+- [x] Keine ungenutzten Imports/Variablen (`pyflakes`/`py_compile` sauber)
+- [x] Einheitlicher Code-Stil (PEP-8, Englisch, Docstrings vorhanden)
+- [x] Keine neuen Hardcoded-Werte; bewusste Ausnahmen kommentieren
+- [x] Bugfixes durch Unit-Tests absichern (`python manage.py test` bleibt gruen)
 
 ### 2.6 Dokumentation
-- [ ] Unter `/docs` dokumentieren: `code_review.md` (Befunde + Fixes je Datei)
+- [x] Unter `/docs` dokumentieren: `code_review.md` (Befunde + Fixes je Datei)
 
 ---
 
