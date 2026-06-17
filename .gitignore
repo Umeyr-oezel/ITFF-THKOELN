@@ -6,3 +6,7 @@ __pycache__/
 venv/
 .idea/
 *.sqlite3
+
+# PowerPoint files stay local (presentation deliverable), plus OS cruft
+*.pptx
+.DS_Store
