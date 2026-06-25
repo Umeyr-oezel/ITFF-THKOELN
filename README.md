@@ -3,9 +3,9 @@
 Automated pipeline that downloads, processes, validates, and analyzes
 **SEC Form 4 insider-transaction data** for 2020–2025.
 
-Built for the *IT for Finance* course (Group 01). The database layer uses the
-**Django ORM** (PostgreSQL in production, SQLite locally) — Django is used purely
-as an ORM, there is no web frontend, login, or admin panel.
+Built for the *IT for Finance* course at TH Köln. The database layer uses the
+**Django ORM** (PostgreSQL or SQLite — SQLite by default locally) — Django is
+used purely as an ORM, there is no web frontend, login, or admin panel.
 
 ---
 
@@ -91,11 +91,10 @@ ITFF-THKOELN/
 ├── secpipeline/             Django project config
 │   └── settings.py            DB connection from .env (PostgreSQL / SQLite)
 │
-├── analysis/                Presentation analysis + chart tooling (Task 1)
-│   ├── insider_insights.py        all-time patterns + COVID-2020 story → data charts
-│   ├── architecture_seaborn.py    seaborn architecture charts (throughput, lines of code)
-│   ├── architecture_diagrams.py   pipeline-flow + code-layer diagrams
-│   └── build_presentation.py      builds the slide deck (.pptx, local) via python-pptx
+├── analysis/                Analysis + chart generation (audience-facing visuals)
+│   ├── v2_findings.py             insider buy-share vs S&P 500 drawdown (the key finding)
+│   ├── v2_diagrams.py             schematic graphics: Form 4 primer, anatomy, pipeline, data funnel
+│   └── sp500_monthly.csv          S&P 500 monthly closes (chart input, Yahoo Finance)
 │
 ├── output/                  Generated results
 │   ├── <year>/                2020 … 2025
@@ -104,30 +103,42 @@ ITFF-THKOELN/
 │   │   │   ├── monthly/<MM>/   Top-5/Bottom-5 bar charts
 │   │   │   └── overview/       trend · sentiment · heatmap
 │   │   └── tables/monthly/<MM>/  CSV rankings
-│   └── presentation/          board-slide charts (PNG); .pptx kept local
+│   └── presentation/          analysis charts (PNG) the slides are built from
 │
-├── docs/                    Task documentation (German) + EN presentation script
+├── docs/                    Task documentation (German)
 ├── notes/                   Misc notes + archived plan
 └── assets/                  TH Köln logos
 ```
 
 ---
 
-## Presentation & analysis (Task 1)
+## Analysis & charts (Task 1)
 
-`analysis/` turns the populated database into board-ready visuals — separate
-from the core pipeline, so it never touches the pipeline code:
+`analysis/` turns the populated database into the figures shown to the
+audience — kept separate from the pipeline, so it never touches the pipeline
+code:
 
 ```bash
-python analysis/insider_insights.py        # data charts + the COVID-2020 story
-python analysis/architecture_seaborn.py    # seaborn architecture charts
-python analysis/architecture_diagrams.py   # flow / layer diagrams
-python analysis/build_presentation.py      # assembles the .pptx (pip install python-pptx)
+python analysis/v2_findings.py     # insider buy-share vs S&P 500 drawdown (the key finding)
+python analysis/v2_diagrams.py     # Form 4 primer, filing anatomy, pipeline, data funnel
 ```
 
-Charts are written to `output/presentation/` (each in a titled and a title-less
-`_bare` variant). The `.pptx` files are intentionally git-ignored and stay
-local; an English speaker script lives in `docs/praesentation_script_en.md`.
+All figures are written to `output/presentation/`.
+
+### Key finding
+
+Across 2020–2025 the monthly **insider buy-share** — purchases / (purchases +
+sales), by count — moves inversely with the S&P 500 drawdown: **when the
+market falls, insiders buy.** The association is strong (r = −0.75, n = 72
+months) and is not a single-episode artefact — it holds excluding COVID-2020
+(r = −0.73) and in 2022 alone (r = −0.69).
+
+![Insider buy-share vs S&P 500 drawdown](output/presentation/v2_buyshare_crashes.png)
+
+From 4.6M parsed records the analysis narrows to the ~715K open-market buy/sell
+transactions behind the signal:
+
+![From records to the analysed trades](output/presentation/v2_data_funnel.png)
 
 ---
 

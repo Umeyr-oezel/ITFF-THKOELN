@@ -10,3 +10,10 @@ venv/
 # PowerPoint files stay local (presentation deliverable), plus OS cruft
 *.pptx
 .DS_Store
+
+# Slide/script build and speaker notes stay local - not audience-facing
+analysis/v2_deck.py
+analysis/v2_script_pdf.py
+output/presentation/v2_qr.png
+output/presentation/Praesentation - Skript v2.md
+output/presentation/Praesentation - Skript v2.pdf
